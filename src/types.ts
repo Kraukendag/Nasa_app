@@ -1,16 +1,19 @@
 // =============================================================================
 //  TYPES
 // =============================================================================
-//  These describe the shape of the JSON that scripts/build_data.py writes.
-//  Keeping them here means TypeScript will warn us if we ever read a field
-//  that does not exist, instead of silently showing "undefined" to a user.
+//  The shape of the JSON that scripts/build_data.py writes. If a component
+//  reads a field that does not exist here, TypeScript refuses to build --
+//  which is how we stop "undefined" from ever reaching the screen.
 // =============================================================================
 
-/** Every measurable thing we pulled out of a raw CSV row.
- *  Anything null means NASA did not record it. Null never means zero. */
+export type Range = { min: number; max: number } | null
+
+/** Everything measured or derived for one test. null = not recorded, never 0. */
 export interface Normalized {
   material: string | null
   material_raw: string | null
+  substance: string | null
+  fuel_fraction: number | null
   geometry: string | null
   thickness_mm: number | null
   width_mm: number | null
@@ -18,6 +21,8 @@ export interface Normalized {
   fuel: string | null
   fuel_state: string | null
   o2_percent: number | null
+  /** What NASA actually wrote when it is a list or a range ("21; 26.5; 40"). */
+  o2_display: string | null
   o2_mole_fraction: number | null
   n2_mole_fraction: number | null
   co2_mole_fraction: number | null
@@ -25,7 +30,12 @@ export interface Normalized {
   pressure_atm: number | null
   pressure_kpa: number | null
   pressure_mmhg: number | null
+  /** First recorded airflow. BASS-II tests often stepped the flow; see below. */
   flow_cm_s: number | null
+  flow_min_cm_s: number | null
+  flow_max_cm_s: number | null
+  /** Every anemometer reading in the order the crew set it (BASS-II). */
+  flow_sequence_cm_s: number[]
   flow_raw: string | null
   flow_direction: string | null
   gravity: string | null
@@ -33,16 +43,21 @@ export interface Normalized {
   extinction_d_mm: number | null
   burn_rate: number | null
   burn_time_s: number | null
+  spread_rate_mm_s: number | null
+  /** Plain-language ending, e.g. "Blew off at high airflow". */
   outcome: string | null
+  /** Machine category behind `outcome`, used for counting and colour. */
+  outcome_class: string | null
+  /** NASA's own words for how the test ended, where they exist. */
+  outcome_text: string | null
+  /** Where those words come from (table or report page). */
+  outcome_source: string | null
   rt_r0: number | null
   temperature_c: number | null
   material_notes: string[]
-  // Fields that only some investigations have. Index signature lets us read
-  // them without declaring all 40, while the named fields above stay checked.
   [extra: string]: unknown
 }
 
-/** One row from one NASA experimental table. */
 export interface TestRecord {
   id: string
   psi_id: string
@@ -51,9 +66,13 @@ export interface TestRecord {
   row_index: number
   raw: Record<string, string | null>
   normalized: Normalized
+  /** Data-quality problems: typos, failed sensors, inconsistent units. */
   anomalies: string[]
+  /** Scientific markers, e.g. cool-flame territory. Never shown as errors. */
+  science_flags: string[]
   is_note: boolean
   is_flow_vis: boolean
+  duplicate_of?: string
   search_text: string
 }
 
@@ -65,51 +84,125 @@ export interface Investigation {
   doi_url: string | null
   psi_url: string
   hardware: string
+  platform: string
   fuel_state: string
-  tier: string
   pillar: string
   summary: string
+  objectives: string | null
+  sensors_evidenced: string[]
+  sensors_basis: string
   row_count: number
   test_count: number
   materials: string[]
-  o2_range: { min: number; max: number } | null
+  substances: string[]
+  variables_recorded: string[]
+  o2_range: Range
+  pressure_kpa_range: Range
+  outcome_fraction: number
+  has_1g_reference: boolean
+  max_sample_length_cm: number | null
   embedded_notes: string[]
   anomaly_count: number
 }
 
+export interface GravityComparison {
+  test: string
+  psi_id: string
+  outcome_0g: string | null
+  outcome_1g: string | null
+  burn_length_0g: string | null
+  burn_length_1g: string | null
+}
+
 export interface MaterialCard {
+  id: string
   name: string
+  substance: string
   fuel_state: string
   test_count: number
   investigations: string[]
   geometries: string[]
-  o2_range: { min: number; max: number } | null
-  flow_range: { min: number; max: number } | null
-  pressure_range: { min: number; max: number } | null
-  rt_r0_range: { min: number; max: number } | null
+  dimensions: { diameter_mm: number[]; thickness_mm: number[] }
+  o2_range: Range
+  flow_range: Range
+  pressure_range: Range
+  pressure_kpa_range: Range
+  rt_r0_range: Range
+  burn_time_range: Range
+  outcome_classes: Record<string, number>
   outcomes: Record<string, number>
   has_1g_reference: boolean
+  gravity_comparisons: GravityComparison[]
   tested_at_moonbase_o2: boolean
+  tested_at_reduced_pressure: boolean
+  mission_context: Record<string, { status: string; note: string }>
+  confidence: { level: string; reason: string }
+  anomaly_count: number
+  summary: string
+}
+
+export interface KeyInsight {
+  id: string
+  headline: string
+  detail: string
+  psi_id: string
+  doi: string | null
+  source: string
+}
+
+export interface NegativeEntry {
+  category: string
+  title: string
+  detail: string
+  psi_id: string
+  tests: (string | null)[]
+  doi: string | null
+  source: string | null
+}
+
+export interface OpenQuestion {
+  question: string
+  material: string
+  o2_bin: string
+  gravity: string
+  score: number
+  score_parts: Record<string, number>
+  evidence: string
+  measure_with: string
+  facilities: string[]
+  hypothesis: boolean
+}
+
+export interface Coverage {
+  o2_bins: string[]
+  gravity: string[]
+  grid: Record<string, {
+    cells: Record<string, Record<string, number>>
+    o2_not_recorded_0g: number
+    one_g_references: number
+  }>
+  questions: OpenQuestion[]
+  pressure_note: string
 }
 
 export interface Findings {
   max_solid_o2_percent: number
-  moonbase: { o2_percent: number; pressure_psi: number; pressure_kpa: number; note: string }
-  gravity: {
-    tested: string[]
-    untested_zone: { min: number; max: number }
-    moon_g: number
-    mars_g: number
-    note: string
-  }
-  surprises: { id: string; title: string; text: string; evidence: Record<string, unknown> }[]
+  moonbase: { o2_percent: number; pressure_psi: number; pressure_kpa: number; pressure_atm: number; note: string }
+  gravity: { tested: string[]; untested_zone: { min: number; max: number }; moon_g: number; mars_g: number; note: string }
+  key_insights: KeyInsight[]
+  surprises: { id: string; title: string; text: string; evidence_class: string; evidence: Record<string, unknown> }[]
   gaps: string[]
+  negative_knowledge: NegativeEntry[]
+  coverage: Coverage
+  not_included: { name: string; psi_id: string | null; doi: string | null }[]
   anomaly_summary: Record<string, number>
+  science_flag_summary: Record<string, number>
   anomaly_descriptions: Record<string, string>
+  science_flag_descriptions: Record<string, string>
+  outcome_labels: Record<string, string>
+  transcription_note: string
 }
 
-/** The logistic regression fitted to FLEX droplet outcomes at build time.
- *  The website evaluates it in the browser; it never calls a server. */
 export interface FlexModel {
   available: boolean
   target: string
@@ -120,11 +213,28 @@ export interface FlexModel {
   feature_stds: number[]
   feature_ranges: Record<string, { min: number; max: number }>
   n_training_rows: number
-  cv_accuracy: number
-  cv_folds: number[]
+  n_condition_groups: number
+  metrics: {
+    accuracy: number
+    balanced_accuracy: number
+    auc: number
+    baseline_accuracy: number
+    fold_accuracy: number[]
+    validation: string
+  }
   base_rate: number
+  support: { points: number[][]; nn_threshold: number; note: string }
   disclaimer: string
   source: { psi_id: string; doi: string }
 }
 
-export type TabId = 'match' | 'lab' | 'library' | 'about'
+export interface KnowledgeDoc {
+  id: string
+  kind: string
+  title: string
+  text: string
+  psi_id: string | null
+  doi: string | null
+}
+
+export type TabId = 'match' | 'lab' | 'library' | 'insights' | 'about'

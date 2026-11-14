@@ -1,12 +1,11 @@
 // =============================================================================
-//  DATA LOADING
+//  DATA LOADING AND THE FLEX MODEL
 // =============================================================================
-//  Loads the five JSON files the Python pipeline produced. They are fetched
-//  once when the site opens and then held in memory -- there is no backend and
-//  no network call after that first load, so the site works offline.
+//  Fetches the six JSON files once at start-up. After that the site makes no
+//  network calls at all, so it works offline.
 // =============================================================================
 
-import type { Findings, FlexModel, Investigation, MaterialCard, TestRecord } from './types'
+import type { Findings, FlexModel, Investigation, KnowledgeDoc, MaterialCard, TestRecord } from './types'
 
 export interface Dataset {
   tests: TestRecord[]
@@ -14,9 +13,9 @@ export interface Dataset {
   materials: MaterialCard[]
   findings: Findings
   flexModel: FlexModel
+  knowledge: KnowledgeDoc[]
 }
 
-/** Fetch all five data files at the same time rather than one after another. */
 export async function loadDataset(): Promise<Dataset> {
   const base = import.meta.env.BASE_URL
   const get = async <T>(name: string): Promise<T> => {
@@ -24,125 +23,90 @@ export async function loadDataset(): Promise<Dataset> {
     if (!response.ok) throw new Error(`Could not load ${name}`)
     return response.json() as Promise<T>
   }
-  const [tests, investigations, materials, findings, flexModel] = await Promise.all([
+  const [tests, investigations, materials, findings, flexModel, knowledge] = await Promise.all([
     get<TestRecord[]>('tests.json'),
     get<Investigation[]>('investigations.json'),
     get<MaterialCard[]>('materials.json'),
     get<Findings>('findings.json'),
     get<FlexModel>('flex_model.json'),
+    get<KnowledgeDoc[]>('knowledge.json'),
   ])
-  return { tests, investigations, materials, findings, flexModel }
+  return { tests, investigations, materials, findings, flexModel, knowledge }
+}
+
+/** Find the card for a material in a given state (silicone-as-solid and
+ *  silicone-as-smoke are separate cards). */
+export function cardFor(data: Dataset, name: string, state: string) {
+  return data.materials.find((m) => m.id === `${name}|${state}`)
+}
+
+/** Look up an investigation's display name, e.g. "PSI-25 · BASS-II". */
+export function invLabel(data: Dataset, psiId: string) {
+  const inv = data.investigations.find((i) => i.psi_id === psiId)
+  return inv ? `${psiId} · ${inv.acronym}` : psiId
 }
 
 // -----------------------------------------------------------------------------
-//  FLEX MODEL EVALUATION
+//  FLEX MODEL
 // -----------------------------------------------------------------------------
 
-/** Run the fitted logistic regression for one set of droplet conditions.
- *
- *  Returns the probability that the test ends in Extinction, and whether the
- *  inputs sit inside the range FLEX actually covered. If any input is outside
- *  that range we still return the number but mark `inRange: false`, and the
- *  interface refuses to display it -- predicting beyond measured conditions
- *  would be inventing a result.
- */
-export function evaluateFlexModel(
-  model: FlexModel,
-  inputs: { isHeptane: boolean; o2: number; co2: number; he: number; pressureMmHg: number; d0: number },
-): { probability: number; inRange: boolean; outOfRange: string[] } {
-  const raw = [
-    inputs.isHeptane ? 1 : 0,
-    inputs.o2,
-    inputs.co2,
-    inputs.he,
-    inputs.pressureMmHg,
-    inputs.d0,
-  ]
+export interface FlexInputs {
+  isHeptane: boolean
+  o2: number      // mole fraction, 0-1
+  co2: number
+  he: number
+  pressureMmHg: number
+  d0: number
+}
 
-  const outOfRange: string[] = []
-  model.features.forEach((feature, i) => {
-    const range = model.feature_ranges[feature]
-    // The fuel flag is a yes/no, not a measured range, so skip it.
-    if (!range || feature === 'is_heptane') return
-    if (raw[i] < range.min || raw[i] > range.max) outOfRange.push(feature)
+export interface FlexResult {
+  probability: number
+  /** Whether it is honest to show the probability at all. */
+  shown: boolean
+  /** Why not, in plain words, when it is not shown. */
+  reasons: string[]
+  /** Distance to the nearest real FLEX test, in standardized units. */
+  nearestDistance: number
+}
+
+/** Run the fitted model -- and decide whether its answer may be shown.
+ *
+ *  Three checks, all must pass:
+ *   1. The gas mixture is physically possible (O2 + CO2 + He cannot exceed 1).
+ *   2. Every input lies inside the range FLEX covered.
+ *   3. The COMBINATION lies near at least one real FLEX test. Inputs that are
+ *      each in range can still form a combination nobody ever tested.
+ */
+export function evaluateFlexModel(model: FlexModel, x: FlexInputs): FlexResult {
+  const raw = [x.isHeptane ? 1 : 0, x.o2, x.co2, x.he, x.pressureMmHg, x.d0]
+  const reasons: string[] = []
+
+  if (x.o2 + x.co2 + x.he > 1.0001) {
+    reasons.push('the gas fractions add up to more than 100%')
+  }
+  model.features.forEach((f, i) => {
+    const r = model.feature_ranges[f]
+    if (f !== 'is_heptane' && r && (raw[i] < r.min || raw[i] > r.max)) {
+      reasons.push(`${f.replace(/_/g, ' ')} is outside the range FLEX tested`)
+    }
   })
 
-  // Standardize exactly the way the Python script did before fitting.
-  const z = model.features.reduce((sum, _feature, i) => {
-    const scaled = (raw[i] - model.feature_means[i]) / model.feature_stds[i]
-    return sum + model.weights[i] * scaled
-  }, model.bias)
+  const scaled = raw.map((v, i) => (v - model.feature_means[i]) / model.feature_stds[i])
+  let nearest = Infinity
+  for (const p of model.support.points) {
+    let d = 0
+    for (let i = 0; i < p.length; i++) d += (p[i] - scaled[i]) ** 2
+    nearest = Math.min(nearest, Math.sqrt(d))
+  }
+  if (nearest > model.support.nn_threshold) {
+    reasons.push('this combination is far from every condition FLEX actually ran')
+  }
 
+  const z = scaled.reduce((sum, s, i) => sum + model.weights[i] * s, model.bias)
   return {
     probability: 1 / (1 + Math.exp(-z)),
-    inRange: outOfRange.length === 0,
-    outOfRange,
+    shown: reasons.length === 0,
+    reasons,
+    nearestDistance: nearest,
   }
-}
-
-// -----------------------------------------------------------------------------
-//  FINDING THE NEAREST REAL TESTS
-// -----------------------------------------------------------------------------
-
-/** Score how far a real test sits from the conditions the user picked.
- *
- *  Lower is closer. Each parameter is divided by its own range first so that
- *  oxygen percent (a span of ~10) and pressure in mmHg (a span of ~2000) carry
- *  comparable weight. A mismatched material adds a flat penalty, because a
- *  PMMA test is not "nearly" a silicone test no matter how close the numbers.
- */
-export function distanceToTest(
-  test: TestRecord,
-  target: { material?: string | null; o2?: number | null; flow?: number | null; pressure?: number | null },
-  ranges: { o2: number; flow: number; pressure: number },
-): number {
-  const n = test.normalized
-  let sum = 0
-
-  // A different material is not "nearly" the same material, however close the
-  // numbers are, so a mismatch costs a flat penalty.
-  if (target.material && n.material && target.material !== n.material) sum += 4
-
-  // Compare one measurement. If the test never recorded that measurement we
-  // charge a penalty instead of skipping it.
-  //
-  // WHY: skipping used to reward empty rows. A BASS row records no oxygen and
-  // no airflow, so it differed from the user's settings on nothing at all and
-  // scored a perfect 0 -- rows with the least data were ranked as the best
-  // matches. Charging for a blank keeps rows that actually measured something
-  // ahead of rows that measured nothing.
-  const MISSING_PENALTY = 1.5
-  const compare = (wanted: number | null | undefined, actual: number | null, range: number) => {
-    if (wanted == null) return          // the user is not filtering on this
-    if (actual == null) { sum += MISSING_PENALTY; return }
-    sum += ((wanted - actual) / range) ** 2
-  }
-
-  compare(target.o2, n.o2_percent, ranges.o2)
-  compare(target.flow, n.flow_cm_s, ranges.flow)
-  compare(target.pressure, n.pressure_atm, ranges.pressure)
-
-  return Math.sqrt(sum)
-}
-
-/** Pick the N closest real tests to a set of conditions. */
-export function nearestTests(
-  tests: TestRecord[],
-  target: Parameters<typeof distanceToTest>[1],
-  count = 5,
-): { test: TestRecord; distance: number }[] {
-  const usable = tests.filter((t) => !t.is_note && !t.is_flow_vis)
-  const spread = (pick: (t: TestRecord) => number | null) => {
-    const values = usable.map(pick).filter((v): v is number => v != null)
-    return values.length ? Math.max(1e-6, Math.max(...values) - Math.min(...values)) : 1
-  }
-  const ranges = {
-    o2: spread((t) => t.normalized.o2_percent),
-    flow: spread((t) => t.normalized.flow_cm_s),
-    pressure: spread((t) => t.normalized.pressure_atm),
-  }
-  return usable
-    .map((test) => ({ test, distance: distanceToTest(test, target, ranges) }))
-    .sort((a, b) => a.distance - b.distance)
-    .slice(0, count)
 }

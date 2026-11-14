@@ -24,7 +24,8 @@ export interface FlameMeshProps {
   gravityOn: boolean
   /** 0-1, how vigorous the flame is. The Lab drives this from oxygen. */
   intensity?: number
-  /** Sideways airflow, roughly -1 to 1. Leans the flame. */
+  /** Airflow along the WORLD x-axis, -1 to 1. Positive pushes the flame
+   *  toward +x. It stays tied to the world as you orbit the camera. */
   flow?: number
   /** 0 = clean blue burn, 1 = sooty yellow tip. */
   soot?: number
@@ -68,7 +69,16 @@ export default function FlameMesh({
     uniforms.uAlive.value     = e.alive
     uniforms.uGravity.value   = e.gravity
     uniforms.uIntensity.value = e.intensity
-    uniforms.uFlow.value      = e.flow
+    // The flame quad only turns around its vertical axis, so its sideways
+    // direction is the camera's horizontal right vector. Projecting the world
+    // flow onto that vector keeps the lean pointing the same way in the WORLD
+    // as you orbit; seen end-on (flow toward the camera) it shrinks to zero,
+    // exactly as a real bent flame would look. An earlier version leaned in
+    // screen space, so the "airflow" swung round with the camera.
+    const m = state.camera.matrixWorld.elements
+    const rx = m[0], rz = m[2]
+    const len = Math.hypot(rx, rz) || 1
+    uniforms.uFlow.value      = e.flow * (rx / len)
     uniforms.uSoot.value      = soot
 
     // Scale UNIFORMLY. Squashing the quad vertically under 0 g used to turn
@@ -102,7 +112,9 @@ export default function FlameMesh({
           decay={2}
         />
       )}
-      <Billboard>
+      {/* lockX + lockZ: the quad turns to face you only around its vertical
+          axis, so "up" stays up and the lean stays in world space. */}
+      <Billboard lockX lockZ>
         {/* A plane is centred on its own origin, which would bury half the
             flame in the fuel. So we scale this group and offset the quad
             upward by half its height inside it — that puts the pivot at the

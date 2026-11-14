@@ -1,536 +1,597 @@
 // =============================================================================
 //  TAB 2 — EXPERIMENT LAB
 // =============================================================================
-//  Laid out like a CAD workspace: the model sits in the middle and you work on
-//  it from the panels either side.
+//      LEFT   choose what burns, which investigation, and the conditions --
+//             every control offers ONLY values NASA recorded
+//      MIDDLE the 3D workspace: recorded geometry, recorded airflow
+//      RIGHT  what actually happened in the matching tests
 //
-//      LEFT   what you are burning and the conditions you set
-//      MIDDLE the 3D workspace — orbit around the sample and its flame
-//      RIGHT  what actually happened when NASA ran tests like this
-//
-//  The right panel is the important one. It never predicts. It counts recorded
-//  results: how many ignited, how long they burned, how they ended. Where a
-//  table has no outcome column it says so rather than filling the space.
+//  There is no "nearest test" guessing any more. The matching set is exactly
+//  the tests whose recorded values equal your choices, and it always holds a
+//  single material.
 // =============================================================================
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Dataset } from '../data'
-import { evaluateFlexModel, nearestTests } from '../data'
-import { OUTCOME_MEANINGS, summariseOutcomes } from '../outcomes'
+import { cardFor, evaluateFlexModel, invLabel } from '../data'
+import { DIMENSIONS, applySelection, optionsFor, recorded } from '../lab/dimensions'
+import type { Option, Selection, State } from '../lab/dimensions'
+import { OUTCOME_MEANINGS, summarise, summariseOutcomes } from '../outcomes'
 import type { NumericSummary } from '../outcomes'
 import type { TestRecord } from '../types'
+import FlammabilityMap from './FlammabilityMap'
 import Workspace from './Workspace'
 import type { SampleShape } from './Workspace'
 
-type Mode = 'solid' | 'droplet' | 'gas'
+type Gravity = '0g' | 'moon' | 'mars' | '1g'
 
-/** Only materials and fuels that genuinely appear in the PSI tables.
- *  The gas list is led by the CFI-G fuels because those are the ones whose
- *  tables record whether the flame actually caught. */
-const CHOICES: Record<Mode, string[]> = {
-  solid:   ['PMMA', 'SIBAL', 'Silicone', 'Nomex', 'Wax', 'Ultem'],
-  droplet: ['Methanol', 'Heptane', 'C12H26'],
-  gas:     ['30% butane', '50% butane', '30% propane', '30% ethane',
-            'Propane', 'Ethane', 'Ethylene', 'Methane', 'Propylene'],
+const STATE_LABEL: Record<State, string> = { solid: 'Solid', liquid: 'Droplet', gas: 'Gas' }
+const SHAPES: SampleShape[] = ['rod', 'sphere', 'slab', 'film', 'fabric', 'sheet', 'composite sheet', 'candle', 'spherical section']
+
+const median = (v: (number | null | undefined)[]) => {
+  const s = summarise(v.filter((x): x is number => typeof x === 'number'))
+  return s ? s.median : null
+}
+const mostCommon = (v: (string | null | undefined)[]) => {
+  const c = new Map<string, number>()
+  v.forEach((x) => x && c.set(x, (c.get(x) ?? 0) + 1))
+  return [...c.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
 }
 
-const SHAPES: { id: SampleShape; label: string }[] = [
-  { id: 'rod', label: 'Rod' },
-  { id: 'slab', label: 'Slab' },
-  { id: 'sphere', label: 'Sphere' },
-  { id: 'fabric', label: 'Fabric' },
-]
-
-export default function TabLab({
-  data, onInspect,
-}: {
-  data: Dataset
-  onInspect: (material: string) => void
-}) {
-  const [mode, setMode] = useState<Mode>('solid')
-  const [picked, setPicked] = useState<Record<Mode, string>>({
-    solid: 'PMMA', droplet: 'Heptane', gas: '30% butane',
-  })
-  const [shape, setShape] = useState<SampleShape>('rod')
+export default function TabLab({ data, onInspect }: { data: Dataset; onInspect: (m: string) => void }) {
+  const [state, setState] = useState<State>('solid')
+  const [inv, setInv] = useState<string>('all')
+  const [material, setMaterial] = useState<Record<State, string>>({ solid: 'PMMA', liquid: 'Heptane', gas: 'Butane (30%)' })
+  const [sel, setSel] = useState<Selection>({})
+  const [gravity, setGravity] = useState<Gravity>('0g')
   const [lit, setLit] = useState(true)
-  const [gravityOn, setGravityOn] = useState(false)
-  const [o2, setO2] = useState(21)
-  const [flow, setFlow] = useState(10)
-  const [direction, setDirection] = useState<'concurrent' | 'opposed'>('concurrent')
-  const [pressureAtm, setPressureAtm] = useState(1)
-  const [co2, setCo2] = useState(0)
-  const [helium, setHelium] = useState(0)
-  const [dropletD0, setDropletD0] = useState(3)
+  const [moonCheck, setMoonCheck] = useState(false)
 
-  const material = picked[mode]
-  const maxSolidO2 = data.findings.max_solid_o2_percent
-  const card = data.materials.find((m) => m.name === material)
+  // ---- The pool of real tests for this state ----------------------------
+  const pool = useMemo(() => data.tests.filter((t) => !t.is_note && !t.is_flow_vis
+    && t.normalized.fuel_state === state && !t.normalized.is_range_summary && !t.normalized.is_maintenance
+    && t.normalized.material), [data.tests, state])
 
-  // ---- The matching real tests -------------------------------------------
-  const matches = useMemo(() => {
-    const wantedState = mode === 'solid' ? 'solid' : mode === 'droplet' ? 'liquid' : 'gas'
-    const pool = data.tests.filter((t) => t.normalized.fuel_state === wantedState)
-    return nearestTests(
-      pool,
-      {
-        material,
-        o2,
-        flow: mode === 'solid' ? flow : null,
-        pressure: mode !== 'solid' ? pressureAtm : null,
-      },
-      12,
-    )
-  }, [data.tests, mode, material, o2, flow, pressureAtm])
+  const invOptions = useMemo(() => [...new Set(pool.map((t) => t.psi_id))]
+    .map((id) => data.investigations.find((i) => i.psi_id === id)!).filter(Boolean), [pool, data.investigations])
 
-  // Summarise outcomes over a slightly wider net than the five we list, so the
-  // percentages mean something.
-  const outcomes = useMemo(
-    () => summariseOutcomes(matches.map((m) => m.test)),
-    [matches],
-  )
+  const inInv = useMemo(() => (inv === 'all' ? pool : pool.filter((t) => t.psi_id === inv)), [pool, inv])
 
-  // ---- Coverage -----------------------------------------------------------
-  const coverage = useMemo(() => {
-    if (mode === 'solid' && o2 > maxSolidO2) {
-      return { level: 'outside' as const,
-               text: `No solid fuel was ever flight-tested above ${maxSolidO2}% oxygen.` }
+  const materialOptions = useMemo(() => {
+    const c = new Map<string, number>()
+    inInv.forEach((t) => c.set(t.normalized.material!, (c.get(t.normalized.material!) ?? 0) + 1))
+    return [...c.entries()].sort((a, b) => b[1] - a[1])
+  }, [inInv])
+
+  const chosen = materialOptions.some(([m]) => m === material[state]) ? material[state] : materialOptions[0]?.[0]
+  const rows = useMemo(() => inInv.filter((t) => t.normalized.material === chosen), [inInv, chosen])
+
+  // Changing what burns starts the conditions afresh.
+  useEffect(() => { setSel({}); setMoonCheck(false); setGravity('0g') }, [state, inv, chosen])
+
+  const dims = DIMENSIONS.filter((d) => d.states.includes(state))
+  const result = useMemo(() => applySelection(rows, sel), [rows, sel])
+  const has1g = result.some((t) => t.normalized.has_1g_reference)
+  useEffect(() => { if (gravity === '1g' && !has1g) setGravity('0g') }, [has1g, gravity])
+
+  const noData = gravity === 'moon' || gravity === 'mars'
+  const outcomes = useMemo(() => summariseOutcomes(result, gravity === '1g' ? '1g' : '0g'), [result, gravity])
+  const card = chosen ? cardFor(data, chosen, state) : undefined
+
+  // ---- What the 3D model shows, taken from the matching tests ------------
+  const geometry = (sel.geometry ?? mostCommon(result.map((t) => t.normalized.geometry))) as string | null
+  const shape: SampleShape = state === 'liquid' ? 'droplet' : state === 'gas' ? 'burner'
+    : (SHAPES.includes(geometry as SampleShape) ? geometry as SampleShape : 'slab')
+  const sameShape = result.filter((t) => t.normalized.geometry === geometry)
+  const sampleDims = {
+    diameter_mm: median(sameShape.map((t) => t.normalized.diameter_mm)),
+    thickness_mm: median(sameShape.map((t) => t.normalized.thickness_mm)),
+    width_mm: median(sameShape.map((t) => t.normalized.width_mm)),
+  }
+  const flowShown = sel.flow != null ? Number(sel.flow) : median(result.map((t) => t.normalized.flow_cm_s))
+  const direction = (sel.direction ?? mostCommon(result.map((t) => t.normalized.flow_direction))) as
+    'concurrent' | 'opposed' | 'stagnation' | null
+  const o2Shown = sel.o2 != null ? Number(sel.o2) : median(result.map((t) => t.normalized.o2_percent))
+  const d0 = median(result.map((t) => t.normalized.droplet_d0_mm))
+  const dExt = median(result.map((t) => t.normalized.extinction_d_mm))
+  const burnT = median(result.map((t) => t.normalized.burn_time_s))
+  const fiberAll = result.length > 0 && result.every((t) => t.normalized.fiber_supported === true)
+  const neverLit = result.length > 0 && result.every((t) => ['no_ignition_gas', 'no_ignition', 'no_sustained_flame']
+    .includes(t.normalized.outcome_class ?? ''))
+  const intensity = o2Shown != null ? Math.max(0.15, Math.min(1, (o2Shown - 11) / 25)) : 0.5
+  const soot = o2Shown != null ? Math.max(0, Math.min(1, 1 - (o2Shown - 18) / 22)) : 0.7
+
+  // ---- FLEX model, evaluated at the matched tests' recorded conditions ---
+  const flex = useMemo(() => {
+    if (state !== 'liquid' || !['Methanol', 'Heptane'].includes(chosen ?? '') || !result.length) return null
+    const flexRows = result.filter((t) => t.psi_id === 'PSI-69')
+    if (!flexRows.length) return null
+    const m = (k: keyof TestRecord['normalized']) => median(flexRows.map((t) => t.normalized[k] as number | null))
+    const inputs = { isHeptane: chosen === 'Heptane', o2: m('o2_mole_fraction') ?? 0, co2: m('co2_mole_fraction') ?? 0,
+      he: m('he_mole_fraction') ?? 0, pressureMmHg: m('pressure_mmhg') ?? 0, d0: m('droplet_d0_mm') ?? 0 }
+    return { ...evaluateFlexModel(data.flexModel, inputs), n: flexRows.length }
+  }, [state, chosen, result, data.flexModel])
+
+  // ---- Moon-base check: choose the recorded values nearest the habitat ---
+  const runMoonCheck = () => {
+    const next: Selection = {}
+    const o2dim = DIMENSIONS.find((d) => d.key === 'o2')!
+    const o2opts = optionsFor(o2dim, rows, {})
+    const best = o2opts.reduce<Option | null>((b, o) => (!b || Math.abs(Number(o.key) - 30) < Math.abs(Number(b.key) - 30) ? o : b), null)
+    if (best && Math.abs(Number(best.key) - 30) <= 2) next.o2 = best.key
+    if (state !== 'solid') {
+      const pdim = DIMENSIONS.find((d) => d.key === 'pressure')!
+      const popts = optionsFor(pdim, rows, next)
+      const bp = popts.reduce<Option | null>((b, o) => (!b || Math.abs(Number(o.key) - 0.69) < Math.abs(Number(b.key) - 0.69) ? o : b), null)
+      if (bp && Math.abs(Number(bp.key) - 0.69) <= 0.06) next.pressure = bp.key
     }
-    const range = card?.o2_range
-    if (range && (o2 < range.min - 0.5 || o2 > range.max + 0.5)) {
-      return { level: 'edge' as const,
-               text: `${material} was tested between ${range.min}% and ${range.max}% oxygen.` }
-    }
-    return { level: 'inside' as const, text: 'Inside the range NASA tested.' }
-  }, [mode, o2, maxSolidO2, card, material])
+    setSel(next)
+    setMoonCheck(true)
+  }
+  const moonReport = useMemo(() => {
+    if (!moonCheck) return null
+    const o2Max = card?.o2_range?.max ?? null
+    const kpa = card?.pressure_kpa_range
+    return [
+      { ok: o2Max != null && o2Max >= 28, text: o2Max == null ? 'Oxygen is not recorded for this material.'
+          : `Highest recorded oxygen: ${o2Max}% (habitat plan: about 30%).` },
+      { ok: !!kpa && kpa.min <= 75, text: state === 'solid' ? 'No solid-fuel table records pressure, so reduced pressure (about 70 kPa) is untested here.'
+          : kpa ? `Recorded pressure: ${kpa.min}–${kpa.max} kPa (habitat plan: about 70 kPa).` : 'Pressure is not recorded.' },
+      { ok: false, text: 'Lunar gravity (0.16 g): no data in PSI. The 3D view and outcomes are switched off.' },
+    ]
+  }, [moonCheck, card, state])
+  useEffect(() => { if (moonCheck) setGravity('moon') }, [moonCheck])
 
-  const prediction = useMemo(() => {
-    if (mode !== 'droplet' || !data.flexModel.available) return null
-    if (!['Methanol', 'Heptane'].includes(material)) return null
-    return evaluateFlexModel(data.flexModel, {
-      isHeptane: material === 'Heptane',
-      o2: o2 / 100, co2: co2 / 100, he: helium / 100,
-      pressureMmHg: pressureAtm * 760, d0: dropletD0,
-    })
-  }, [mode, data.flexModel, material, o2, co2, helium, pressureAtm, dropletD0])
-
-  const coolFlameRisk = mode === 'droplet' && material === 'Heptane' && dropletD0 > 2.4
-
-  // The flame's look follows the conditions: more oxygen burns harder, and a
-  // richer oxygen supply makes less soot, so the tip stays bluer.
-  const intensity = Math.max(0.1, Math.min(1, (o2 - 11) / 25))
-  const soot = Math.max(0, Math.min(1, 1 - (o2 - 18) / 22))
-  const workspaceShape: SampleShape =
-    mode === 'droplet' ? 'droplet' : mode === 'gas' ? 'burner' : shape
-  const sizeMm = mode === 'droplet' ? dropletD0 * 4 : card?.o2_range ? 12 : 10
+  const highlight = useMemo(() => new Set(result.map((t) => t.id)), [result])
+  const mapTests = useMemo(() => rows.filter((t) => ['PSI-25', 'PSI-98', 'PSI-99'].includes(t.psi_id)), [rows])
 
   return (
-    <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-[260px_1fr_320px] overflow-hidden">
+    // xl:grid-rows-[minmax(0,1fr)] matters: an `auto` row grows to the tallest
+    // column's content, which made the 3D canvas taller than the screen and
+    // pushed the sample out of view.
+    <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[250px_1fr] xl:grid-cols-[250px_1fr_340px] xl:grid-rows-[minmax(0,1fr)] xl:overflow-hidden">
 
-      {/* ===================== LEFT — PARAMETERS ===================== */}
-      <aside className="border-r border-edge overflow-y-auto p-3 space-y-4 text-[12px]">
+      {/* ============================ LEFT ============================ */}
+      <aside className="md:border-r border-edge xl:overflow-y-auto p-3 space-y-4 text-[12px] order-2 md:order-1">
         <Group title="What is burning">
           <div className="grid grid-cols-3 gap-1">
-            {(['solid', 'droplet', 'gas'] as Mode[]).map((m) => (
-              <button key={m} onClick={() => setMode(m)}
-                      className={`btn !px-1 !py-1.5 text-[11px] capitalize ${mode === m ? 'btn-active' : ''}`}>
-                {m}
-              </button>
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-1 mt-2">
-            {CHOICES[mode].map((name) => (
-              <button key={name}
-                      onClick={() => setPicked((p) => ({ ...p, [mode]: name }))}
-                      className={`px-2 py-1 rounded text-[11px] border transition-all duration-200
-                                  ${material === name
-                                    ? 'border-cryo/70 bg-cryo/15 text-white'
-                                    : 'border-edge text-mute hover:text-slate-200 hover:border-mute/50'}`}>
-                {name}
-              </button>
+            {(['solid', 'liquid', 'gas'] as State[]).map((s) => (
+              <button key={s} onClick={() => { setState(s); setInv('all') }}
+                      className={`btn !px-1 !py-1.5 text-[11px] ${state === s ? 'btn-active' : ''}`}>{STATE_LABEL[s]}</button>
             ))}
           </div>
         </Group>
 
-        {mode === 'solid' && (
-          <Group title="Sample shape">
-            <div className="grid grid-cols-4 gap-1">
-              {SHAPES.map((s) => (
-                <button key={s.id} onClick={() => setShape(s.id)}
-                        className={`btn !px-1 !py-1.5 text-[10px] ${shape === s.id ? 'btn-active' : ''}`}>
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          </Group>
-        )}
-
-        <Group title="Gravity">
-          <div className="grid grid-cols-2 gap-1">
-            <button onClick={() => setGravityOn(false)}
-                    className={`btn !py-1.5 text-[11px] ${!gravityOn ? 'btn-active' : ''}`}>
-              0 g
-            </button>
-            <button onClick={() => setGravityOn(true)}
-                    disabled={!card?.has_1g_reference}
-                    title={card?.has_1g_reference ? undefined : 'No normal-gravity reference exists for this material'}
-                    className={`btn !py-1.5 text-[11px] ${gravityOn ? 'btn-active' : ''}`}>
-              1 g
-            </button>
-          </div>
-
-          {/* The locked band. Clicking it does nothing, on purpose. */}
-          <div className="relative h-7 mt-2 rounded border border-edge overflow-hidden bg-navy/40">
-            <div className="absolute inset-y-0 left-0 w-[14%] bg-cryo/20" />
-            <div className="absolute inset-y-0 right-0 w-[14%] bg-ember/20" />
-            <div className="absolute inset-y-0 left-[14%] right-[14%] hatched" />
-            {[{ g: data.findings.gravity.moon_g, n: 'Moon' },
-              { g: data.findings.gravity.mars_g, n: 'Mars' }].map((b) => (
-              <div key={b.n} className="absolute inset-y-0 flex items-center"
-                   style={{ left: `${14 + b.g * 72}%` }}>
-                <div className="w-px h-full bg-star/50" />
-                <span className="absolute text-[8px] text-star bg-deep/90 px-0.5 rounded -translate-x-1/2">
-                  {b.n}
-                </span>
-              </div>
-            ))}
-          </div>
-          <p className="mt-1.5 text-[10px] text-mute leading-snug">
-            The hatched band is unmeasured. Flame spread peaking near lunar gravity is a
-            hypothesis — NASA's FM2 mission will test it.
-          </p>
-        </Group>
-
-        <Group title="Atmosphere">
-          <Slider label="Oxygen" value={o2} min={12} max={40} step={0.5} unit="%"
-                  onChange={setO2}
-                  marker={mode === 'solid' ? { at: maxSolidO2 } : undefined} />
-          {mode === 'solid' ? (
-            <>
-              <Slider label="Air flow" value={flow} min={0} max={30} step={0.5} unit=" cm/s" onChange={setFlow} />
-              <div className="grid grid-cols-2 gap-1 mt-2">
-                {(['concurrent', 'opposed'] as const).map((d) => (
-                  <button key={d} onClick={() => setDirection(d)}
-                          className={`btn !py-1.5 text-[10px] capitalize ${direction === d ? 'btn-active' : ''}`}>
-                    {d}
-                  </button>
-                ))}
-              </div>
-            </>
-          ) : (
-            <>
-              <Slider label="Pressure" value={pressureAtm} min={0.4} max={5} step={0.05} unit=" atm" onChange={setPressureAtm} decimals={2} />
-              {mode === 'droplet' && (
-                <>
-                  <Slider label="Droplet size" value={dropletD0} min={1} max={5} step={0.05} unit=" mm" onChange={setDropletD0} decimals={2} />
-                  <Slider label="CO₂" value={co2} min={0} max={50} step={1} unit="%" onChange={setCo2} />
-                  <Slider label="Helium" value={helium} min={0} max={50} step={1} unit="%" onChange={setHelium} />
-                </>
-              )}
-            </>
+        <Group title="Investigation">
+          <select value={inv} onChange={(e) => setInv(e.target.value)}
+                  className="w-full bg-navy/60 border border-edge rounded px-2 py-1.5 text-[11px] text-slate-200 focus:outline-none focus:border-cryo/60">
+            <option value="all">All investigations with this fuel state</option>
+            {invOptions.map((i) => <option key={i.psi_id} value={i.psi_id}>{i.psi_id} · {i.acronym} — {i.title}</option>)}
+          </select>
+          {inv !== 'all' && (
+            <p className="mt-1.5 text-[10px] text-mute leading-snug">
+              {data.investigations.find((i) => i.psi_id === inv)?.summary}
+            </p>
           )}
         </Group>
 
-        <button onClick={() => { setO2(30); setPressureAtm(0.69) }}
-                className="btn w-full !py-1.5 text-[10px] border-star/40 text-star">
-          Moon base · 30% O₂, 10.2 psi
+        <Group title={state === 'solid' ? 'Material' : 'Fuel'}>
+          <div className="flex flex-wrap gap-1">
+            {materialOptions.map(([m, c]) => (
+              <button key={m} onClick={() => setMaterial((p) => ({ ...p, [state]: m }))}
+                      className={`px-2 py-1 rounded text-[11px] border transition-all duration-200
+                        ${chosen === m ? 'border-cryo/70 bg-cryo/15 text-white' : 'border-edge text-mute hover:text-slate-200 hover:border-mute/50'}`}>
+                {m} <span className="tabular text-[9px] opacity-60">{c}</span>
+              </button>
+            ))}
+          </div>
+        </Group>
+
+        <Group title="Recorded conditions">
+          <p className="text-[10px] text-mute -mt-0.5 mb-2 leading-snug">
+            Only values NASA recorded for {chosen}. Each choice narrows the others.
+          </p>
+          <div className="space-y-3">
+            {dims.map((d) => recorded(d, rows) ? (
+              <StepControl key={d.key} label={d.label} options={optionsFor(d, rows, sel)} value={sel[d.key] ?? null}
+                           onChange={(v) => setSel((p) => ({ ...p, [d.key]: v }))} />
+            ) : (
+              <div key={d.key} className="opacity-60">
+                <div className="text-[10px] text-mute">{d.label}</div>
+                <div className="text-[10px] text-mute/70 italic">{d.missingNote}</div>
+              </div>
+            ))}
+            {state === 'solid' && (
+              <div className="opacity-60">
+                <div className="text-[10px] text-mute">Pressure</div>
+                <div className="text-[10px] text-mute/70 italic">No solid-fuel table in this dataset records pressure.</div>
+              </div>
+            )}
+          </div>
+          {Object.values(sel).some((v) => v != null) && (
+            <button onClick={() => { setSel({}); setMoonCheck(false) }} className="mt-2 text-[10px] text-flame hover:underline">Clear conditions</button>
+          )}
+        </Group>
+
+        <GravityTrack gravity={gravity} setGravity={(g) => { setGravity(g); if (g !== 'moon') setMoonCheck(false) }} has1g={has1g} />
+
+        <button onClick={runMoonCheck} className="btn w-full !py-1.5 text-[10px] border-star/40 text-star">
+          Check Moon-base conditions (30% O₂, 10.2 psi, 0.16 g)
         </button>
+        {moonReport && (
+          <div className="panel-flat p-2 space-y-1.5 anim-fade-in">
+            {moonReport.map((r, i) => (
+              <div key={i} className="flex gap-1.5 text-[10px] leading-snug">
+                <span className={r.ok ? 'text-cryo' : 'text-flame'}>{r.ok ? '✓' : '✕'}</span>
+                <span className="text-slate-300">{r.text}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </aside>
 
-      {/* ===================== MIDDLE — 3D WORKSPACE ===================== */}
-      <section className="relative min-h-[380px]">
-        <Workspace
-          shape={workspaceShape}
-          lit={lit}
-          gravityOn={gravityOn}
-          intensity={intensity}
-          flow={(direction === 'opposed' ? -1 : 1) * Math.min(1, flow / 30)}
-          soot={soot}
-          sizeMm={sizeMm}
-        />
+      {/* ============================ MIDDLE ============================ */}
+      <section className="relative min-h-[420px] md:min-h-[520px] xl:min-h-0 order-1 md:order-2">
+        <Workspace shape={shape} dims={sampleDims} lit={lit && !neverLit && !noData}
+                   gravity={noData ? 'none' : gravity === '1g' ? '1g' : '0g'}
+                   intensity={intensity} soot={soot}
+                   flowCmS={state === 'solid' ? flowShown : null} direction={state === 'solid' ? direction : null}
+                   droplet={state === 'liquid' ? { d0: d0 ?? 2.5, dExt, burnTime: burnT } : null}
+                   fiber={fiberAll} />
 
-        {/* Floating overlays, kept out of the middle so the model stays clear */}
-        <div className="absolute top-3 left-3 right-3 flex items-start justify-between gap-2
-                        pointer-events-none">
-          <div className={`badge pointer-events-auto ${
-            coverage.level === 'outside' ? 'badge-alert'
-            : coverage.level === 'edge' ? 'badge-warn' : 'badge-ok'}`}>
-            {coverage.level === 'outside' ? 'Extrapolated — outside tested range'
-              : coverage.level === 'edge' ? 'Edge of tested range' : 'Inside tested range'}
-          </div>
-          <div className="badge badge-dead pointer-events-auto">Illustrative flame</div>
+        <div className="absolute top-3 left-3 right-3 flex flex-wrap items-start justify-between gap-2 pointer-events-none">
+          <span className={`badge ${noData ? 'badge-alert' : 'badge-ok'}`}>
+            {noData ? 'No data at this gravity' : `Recorded conditions · ${result.length} matching test${result.length === 1 ? '' : 's'}`}
+          </span>
+          <span className="badge badge-dead">Illustrative flame</span>
         </div>
 
-        {coverage.level !== 'inside' && (
-          <div className="absolute top-12 left-3 max-w-sm panel px-3 py-2 text-[11px] text-slate-300
-                          anim-fade-in">
-            {coverage.text}
+        {noData && (
+          <div className="absolute inset-0 grid place-items-center pointer-events-none">
+            <div className="panel max-w-sm p-4 text-center anim-fade-up">
+              <div className="badge badge-warn mb-2">Hypothesis zone</div>
+              <p className="text-[12px] text-slate-200">
+                NASA PSI has no combustion data at {gravity === 'moon' ? '0.16 g (Moon)' : '0.38 g (Mars)'}.
+              </p>
+              <p className="text-[11px] text-mute mt-2 leading-snug">
+                Partial-gravity flame tests exist from parabolic flights and LUCI, but not in PSI. The idea that
+                flame spread peaks near lunar gravity is a hypothesis; NASA's FM2 experiment is built to test it.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {!noData && neverLit && (
+          <div className="absolute top-12 left-3 panel px-3 py-2 text-[11px] text-slate-300 max-w-xs anim-fade-in">
+            None of the matching tests established a flame, so none is drawn.
           </div>
         )}
 
         <div className="absolute bottom-3 left-3 right-3 flex flex-wrap items-center gap-2">
-          <button onClick={() => setLit((v) => !v)}
-                  className={`btn-ignite !px-4 !py-2 !text-xs ${lit ? 'is-lit' : ''}`}>
+          <button onClick={() => setLit((v) => !v)} className={`btn-ignite !px-4 !py-2 !text-xs ${lit ? 'is-lit' : ''}`}>
             {lit ? 'Extinguish' : 'Ignite'}
           </button>
-          <div className="panel px-2.5 py-1.5 text-[10px] text-mute">
-            {gravityOn ? '1 g · buoyant plume' : '0 g · spherical diffusion flame'}
+          <div className="panel px-2.5 py-1.5 text-[10px] text-slate-300 max-w-full">
+            {describeSample(shape, chosen, sampleDims, d0, state)}
+            {state === 'solid' && flowShown != null && <> · <span className="text-white">{flowShown} cm/s</span> {direction ?? 'direction not recorded'} flow</>}
           </div>
-          <div className="ml-auto panel px-2.5 py-1.5 text-[10px] text-mute">
-            drag to orbit · scroll to zoom
-          </div>
+          <div className="ml-auto panel px-2.5 py-1.5 text-[10px] text-mute hidden sm:block">drag to orbit · scroll to zoom</div>
         </div>
       </section>
 
-      {/* ===================== RIGHT — OUTCOMES ===================== */}
-      <aside className="border-l border-edge overflow-y-auto p-3 space-y-3 text-[12px]">
+      {/* ============================ RIGHT ============================ */}
+      <aside className="border-t md:border-t-0 xl:border-l border-edge xl:overflow-y-auto p-3 space-y-3 text-[12px] order-3 md:col-span-2 xl:col-span-1">
         <div>
           <div className="label">What happened in real tests</div>
-          <h3 className="text-base font-semibold mt-0.5">{material}</h3>
+          <h3 className="text-base font-semibold mt-0.5">{chosen}{gravity === '1g' ? ' · 1 g reference' : ''}</h3>
           <p className="text-[10px] text-mute mt-0.5">
-            From the {outcomes.sampled} nearest recorded test{outcomes.sampled === 1 ? '' : 's'}
-            {outcomes.sources.length > 0 && ` · ${outcomes.sources.join(', ')}`}
+            {outcomes.sampled} matching test{outcomes.sampled === 1 ? '' : 's'}
+            {result.length > outcomes.sampled && ` (${result.length - outcomes.sampled} with implausible O₂ readings left out)`}
+            {outcomes.sources.length > 0 && ` · ${outcomes.sources.map((s) => invLabel(data, s)).join(', ')}`}
           </p>
         </div>
 
-        {/* The headline answer: did it catch? */}
-        {outcomes.ignition && (
-          <div className="panel p-3 anim-slide-in">
-            <div className="label mb-2">Did it ignite?</div>
-            <div className="flex items-end gap-2">
-              <span className="text-3xl font-bold tabular text-cryo">
-                {outcomes.ignition.ignited}
-              </span>
-              <span className="text-mute mb-1 text-[11px]">
-                of {outcomes.ignition.ignited + outcomes.ignition.failed} ignited
-              </span>
-            </div>
-            <Bar value={outcomes.ignition.ignited /
-                        Math.max(1, outcomes.ignition.ignited + outcomes.ignition.failed)} />
-            {outcomes.ignition.failed > 0 && (
-              <p className="mt-1.5 text-[10px] text-star">
-                {outcomes.ignition.failed} attempt{outcomes.ignition.failed === 1 ? '' : 's'} never caught.
-              </p>
-            )}
+        {noData ? (
+          <div className="panel p-3 border-star/40">
+            <span className="badge badge-alert">No data</span>
+            <p className="mt-1.5 text-[11px] text-slate-300">No outcome can be shown at partial gravity: nothing was measured there.</p>
           </div>
-        )}
-
-        {/* How it ended */}
-        {outcomes.outcomes.length > 0 && (
-          <div className="panel p-3 anim-slide-in">
-            <div className="label mb-2">How it ended</div>
-            <div className="space-y-2">
-              {outcomes.outcomes.map((o) => (
-                <div key={o.label}>
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="text-slate-200 text-[11px]">{o.label}</span>
-                    <span className="tabular text-[11px] text-mute">
-                      {o.count} · {(o.share * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                  <Bar value={o.share} />
-                  {OUTCOME_MEANINGS[o.label] && (
-                    <p className="text-[10px] text-mute mt-0.5">{OUTCOME_MEANINGS[o.label]}</p>
-                  )}
+        ) : (
+          <>
+            {outcomes.ignition && (
+              <div className="panel p-3 anim-slide-in">
+                <div className="label mb-2">Did it ignite?</div>
+                <div className="flex items-end gap-2">
+                  <span className="text-3xl font-bold tabular text-cryo">{outcomes.ignition.ignited}</span>
+                  <span className="text-mute mb-1 text-[11px]">of {outcomes.ignition.ignited + outcomes.ignition.failed} ignited</span>
                 </div>
-              ))}
-            </div>
+                <Bar value={outcomes.ignition.ignited / Math.max(1, outcomes.ignition.ignited + outcomes.ignition.failed)} />
+              </div>
+            )}
+
+            {outcomes.outcomes.length > 0 && (
+              <div className="panel p-3 anim-slide-in">
+                <div className="label mb-2">How it ended</div>
+                <div className="space-y-2">
+                  {outcomes.outcomes.map((o) => (
+                    <div key={o.cls}>
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-slate-200 text-[11px]">{o.label}</span>
+                        <span className="tabular text-[11px] text-mute">{o.count} · {(o.share * 100).toFixed(0)}%</span>
+                      </div>
+                      <Bar value={o.share} />
+                      {OUTCOME_MEANINGS[o.cls] && <p className="text-[10px] text-mute mt-0.5">{OUTCOME_MEANINGS[o.cls]}</p>}
+                    </div>
+                  ))}
+                </div>
+                {outcomes.sources.includes('PSI-25') && (
+                  <p className="mt-2 text-[9.5px] text-mute leading-snug">
+                    Categories are this project's reading of NASA's test-matrix notes (BASS-II Summary Report,
+                    Appendix A). NASA's own words are quoted below.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {outcomes.quotes.length > 0 && gravity === '0g' && (
+              <div className="panel p-3 anim-slide-in">
+                <div className="label mb-2">In NASA's words</div>
+                <div className="space-y-2">
+                  {outcomes.quotes.map((q) => (
+                    <blockquote key={q.test} className="text-[10.5px] text-slate-300 leading-snug border-l-2 border-edge pl-2">
+                      “{q.text}”
+                      <div className="text-[9px] text-mute mt-0.5 font-mono">{q.psi} {q.test} · {q.source}</div>
+                    </blockquote>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {outcomes.burnTime && <Measurement title="How long it burned" unit="s" s={outcomes.burnTime} />}
+            {outcomes.extinctionDiameter && <Measurement title="Diameter at visible extinction" unit="mm" s={outcomes.extinctionDiameter} />}
+            {outcomes.spreadRate && <Measurement title="Flame spread rate" unit="mm/s" s={outcomes.spreadRate} />}
+            {outcomes.peakTemp && <Measurement title="Peak burner temperature" unit="°C" s={outcomes.peakTemp} />}
+
+            {(outcomes.coolFlamesRecorded > 0 || outcomes.coolFlameTerritory > 0) && (
+              <div className="panel p-3 border-star/45 anim-slide-in">
+                {outcomes.coolFlamesRecorded > 0 && (
+                  <><span className="badge badge-warn">{outcomes.coolFlamesRecorded} cool flames recorded</span>
+                    <p className="mt-1.5 text-[11px] text-slate-300">CFI-G logged these as cool flames: low-temperature burning that gives off little light.</p></>
+                )}
+                {outcomes.coolFlameTerritory > 0 && (
+                  <><span className="badge badge-dead mt-1">{outcomes.coolFlameTerritory} tests in cool-flame territory</span>
+                    <p className="mt-1.5 text-[11px] text-slate-300">
+                      Heptane droplets above 2.4 mm, where FLEX researchers reported burning continuing invisibly after
+                      visible extinction. The table records visible extinction only, so these are not counted as observed cool flames.
+                    </p></>
+                )}
+              </div>
+            )}
+
+            {outcomes.noOutcomeReason && (
+              <div className="panel p-3 anim-slide-in">
+                <span className="badge badge-dead">No outcome recorded</span>
+                <p className="mt-1.5 text-[11px] text-slate-300">{outcomes.noOutcomeReason}</p>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* 0 g vs 1 g, where SAFFIRE-II recorded both */}
+        {result.some((t) => t.normalized.has_1g_reference) && (
+          <div className="panel p-3 anim-slide-in">
+            <div className="label mb-2">Same sample, both gravities</div>
+            <table className="w-full text-[10.5px]">
+              <thead><tr className="text-mute text-left"><th className="font-normal">Sample</th><th className="font-normal">0 g burn</th><th className="font-normal">1 g burn</th></tr></thead>
+              <tbody>
+                {result.filter((t) => t.normalized.has_1g_reference).map((t) => (
+                  <tr key={t.id} className="border-t border-edge/50">
+                    <td className="py-1 font-mono text-cryo">{t.test_number}</td>
+                    <td className="py-1 text-slate-300">{t.normalized.burn_length_0g_raw as string}</td>
+                    <td className="py-1 text-slate-300">{t.normalized.burn_length_1g_raw as string}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="text-[9.5px] text-mute mt-1.5">PSI-99 SAFFIRE-II burn length columns · DOI 10.60555/2chp-m469</p>
           </div>
         )}
 
-        {/* How long it lasted */}
-        {outcomes.burnTime && (
-          <Measurement title="How long it burned" unit="s" summary={outcomes.burnTime} />
-        )}
-        {outcomes.extinctionDiameter && (
-          <Measurement title="Diameter at extinction" unit="mm" summary={outcomes.extinctionDiameter} />
-        )}
-        {outcomes.peakTemp && (
-          <Measurement title="Peak burner temperature" unit="°C" summary={outcomes.peakTemp} />
-        )}
-
-        {outcomes.coolFlames > 0 && (
-          <div className="panel p-3 border-star/45 anim-slide-in">
-            <span className="badge badge-warn">Cool flames recorded</span>
-            <p className="mt-1.5 text-[11px] text-slate-300">
-              {outcomes.coolFlames} of these tests showed burning that continues after the
-              visible flame disappears — producing carbon monoxide with no light for a
-              detector to see.
-            </p>
-          </div>
-        )}
-
-        {/* When the tables simply do not say */}
-        {outcomes.noOutcomeReason && (
-          <div className="panel p-3 border-edge anim-slide-in">
-            <span className="badge badge-dead">No outcome recorded</span>
-            <p className="mt-1.5 text-[11px] text-slate-300">{outcomes.noOutcomeReason}</p>
-          </div>
-        )}
-
-        {/* Droplet model */}
-        {prediction && (
+        {flex && (
           <div className="panel p-3 anim-slide-in">
             <div className="flex items-center justify-between mb-1.5">
-              <div className="label">Fitted model</div>
-              <span className="badge badge-dead">
-                {(data.flexModel.cv_accuracy * 100).toFixed(0)}%
-              </span>
+              <div className="label">Fitted FLEX model</div>
+              <span className="badge badge-dead">{flex.n} FLEX tests matched</span>
             </div>
-            {prediction.inRange ? (
+            {flex.shown ? (
               <>
                 <div className="flex items-end gap-2">
-                  <span className="text-2xl font-bold tabular text-cryo">
-                    {(prediction.probability * 100).toFixed(0)}%
-                  </span>
-                  <span className="text-[10px] text-mute mb-1">chance of extinction</span>
+                  <span className="text-2xl font-bold tabular text-cryo">{(flex.probability * 100).toFixed(0)}%</span>
+                  <span className="text-[10px] text-mute mb-1">fitted chance of extinction at these conditions</span>
                 </div>
-                <Bar value={prediction.probability} />
+                <Bar value={flex.probability} />
               </>
             ) : (
-              <>
-                <span className="badge badge-alert">No prediction</span>
-                <p className="mt-1.5 text-[10px] text-slate-300">
-                  Outside the conditions FLEX tested
-                  ({prediction.outOfRange.join(', ').replace(/_/g, ' ')}).
-                </p>
-              </>
+              <><span className="badge badge-alert">Not shown</span>
+                <p className="mt-1.5 text-[10px] text-slate-300">{flex.reasons.join('; ')}.</p></>
             )}
+            <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-0.5 text-[9.5px] tabular text-mute">
+              <span>accuracy {(data.flexModel.metrics.accuracy * 100).toFixed(0)}%</span>
+              <span>always-extinction baseline {(data.flexModel.metrics.baseline_accuracy * 100).toFixed(0)}%</span>
+              <span>balanced accuracy {(data.flexModel.metrics.balanced_accuracy * 100).toFixed(0)}%</span>
+              <span>AUC {data.flexModel.metrics.auc.toFixed(2)}</span>
+            </div>
             <p className="mt-1.5 text-[9px] text-mute leading-snug">
-              Statistical fit to {data.flexModel.n_training_rows} recorded FLEX outcomes.
-              Not a physical model.
+              {data.flexModel.metrics.validation}. {data.flexModel.disclaimer}
             </p>
           </div>
         )}
 
-        {coolFlameRisk && (
-          <div className="panel p-3 border-star/45">
-            <span className="badge badge-warn">Invisible cool flame possible</span>
-            <p className="mt-1.5 text-[11px] text-slate-300">
-              Heptane droplets above 2.4 mm keep burning after the visible flame goes out.
+        {state === 'solid' && mapTests.length >= 3 && (
+          <div className="panel p-3">
+            <div className="label mb-1">Where {chosen} flames survived</div>
+            <p className="text-[10px] text-mute mb-2 leading-snug">
+              Every recorded {chosen} test by oxygen and airflow. No boundary is fitted: the points are the evidence.
             </p>
+            <FlammabilityMap tests={mapTests} highlight={highlight}
+                             selectedO2={sel.o2 != null ? Number(sel.o2) : null}
+                             selectedFlow={sel.flow != null ? Number(sel.flow) : null} />
           </div>
         )}
 
-        {mode === 'solid' && material === 'Silicone' && (
-          <div className="panel p-3 border-cryo/40">
-            <span className="badge badge-ok">Reverses in space</span>
-            <p className="mt-1.5 text-[11px] text-slate-300">
-              SAFFIRE-II: silicone burned completely at 1 g but barely ignited in microgravity.
-            </p>
-          </div>
-        )}
-
-        {/* The individual tests behind the numbers */}
         <div>
-          <div className="label mb-1.5">Closest tests</div>
+          <div className="label mb-1.5">Matching tests</div>
           <div className="space-y-1.5">
-            {matches.slice(0, 5).map(({ test }) => (
-              <TestChip key={test.id} test={test} investigations={data.investigations} />
-            ))}
+            {result.slice(0, 8).map((t) => <TestChip key={t.id} t={t} data={data} />)}
+            {result.length > 8 && <p className="text-[10px] text-mute">and {result.length - 8} more</p>}
           </div>
         </div>
-
-        <button onClick={() => onInspect(material)} className="btn w-full !py-1.5 text-[10px]">
-          Inspect {material} rows →
-        </button>
+        {chosen && (
+          <button onClick={() => onInspect(chosen)} className="btn w-full !py-1.5 text-[10px]">
+            Inspect all {chosen} rows in the Data Library →
+          </button>
+        )}
       </aside>
     </div>
   )
 }
 
 // =============================================================================
-//  SMALL PIECES
-// =============================================================================
+
+function describeSample(shape: SampleShape, name: string | undefined, d: { diameter_mm: number | null; thickness_mm: number | null; width_mm: number | null }, d0: number | null, state: State) {
+  if (state === 'liquid') return `${name} droplet${d0 != null ? ` · ${d0.toFixed(2)} mm initial diameter (median recorded)` : ' · diameter not recorded in this table'}`
+  if (state === 'gas') return `${name} · gas burner (nozzle size not recorded here)`
+  const parts = [`${name} ${shape}`]
+  if (d.diameter_mm) parts.push(`${d.diameter_mm} mm diameter`)
+  if (d.thickness_mm) parts.push(`${d.thickness_mm} mm thick`)
+  if (d.width_mm && shape !== 'rod') parts.push(`${d.width_mm} mm wide`)
+  if (parts.length === 1) parts.push('size not recorded')
+  return parts.join(' · ')
+}
 
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section>
-      <div className="label mb-1.5">{title}</div>
-      {children}
-    </section>
-  )
+  return <section><div className="label mb-1.5">{title}</div>{children}</section>
 }
 
 function Bar({ value }: { value: number }) {
   return (
     <div className="mt-1 h-1.5 rounded-full bg-navy overflow-hidden">
-      <div className="h-full bg-gradient-to-r from-cryo to-star transition-all duration-500"
-           style={{ width: `${Math.max(2, value * 100)}%` }} />
+      <div className="h-full bg-gradient-to-r from-cryo to-star transition-all duration-500" style={{ width: `${Math.max(2, value * 100)}%` }} />
     </div>
   )
 }
 
-/** Min / median / max for one measured quantity. */
-function Measurement({ title, unit, summary }: {
-  title: string; unit: string; summary: NumericSummary
-}) {
+function Measurement({ title, unit, s }: { title: string; unit: string; s: NumericSummary }) {
+  const f = (v: number) => v.toFixed(v < 10 ? 1 : 0)
   return (
     <div className="panel p-3 anim-slide-in">
       <div className="flex items-baseline justify-between">
         <div className="label">{title}</div>
-        <span className="text-[9px] text-mute tabular">{summary.count} tests</span>
+        <span className="text-[9px] text-mute tabular">{s.count} tests</span>
       </div>
       <div className="flex items-end gap-1.5 mt-1">
-        <span className="text-2xl font-bold tabular text-slate-100">
-          {summary.median.toFixed(summary.median < 10 ? 1 : 0)}
-        </span>
-        <span className="text-[11px] text-mute mb-1">{unit} typical</span>
+        <span className="text-2xl font-bold tabular text-slate-100">{f(s.median)}</span>
+        <span className="text-[11px] text-mute mb-1">{unit} median</span>
       </div>
-      <div className="mt-1 text-[10px] tabular text-mute">
-        range {summary.min.toFixed(summary.min < 10 ? 1 : 0)} – {summary.max.toFixed(summary.max < 10 ? 1 : 0)} {unit}
-      </div>
+      <div className="mt-1 text-[10px] tabular text-mute">range {f(s.min)} – {f(s.max)} {unit}</div>
     </div>
   )
 }
 
-function Slider({ label, value, min, max, step, unit, onChange, decimals = 1, marker }: {
-  label: string; value: number; min: number; max: number; step: number
-  unit: string; onChange: (v: number) => void; decimals?: number
-  marker?: { at: number }
+/** A control that offers only recorded values: chips when there are a few,
+ *  a stepped slider (one stop per recorded value) when there are many. */
+function StepControl({ label, options, value, onChange }: {
+  label: string; options: Option[]; value: string | null; onChange: (v: string | null) => void
 }) {
-  const beyond = marker ? value > marker.at : false
-  const markerPercent = marker ? ((marker.at - min) / (max - min)) * 100 : null
+  const idx = value == null ? -1 : options.findIndex((o) => o.key === value)
+  const current = idx >= 0 ? options[idx] : null
   return (
-    <div className="mt-2 first:mt-0">
-      <div className="flex items-baseline justify-between mb-1">
+    <div>
+      <div className="flex items-baseline justify-between mb-1 gap-2">
         <span className="text-[10px] text-mute">{label}</span>
-        <span className={`tabular text-[11px] ${beyond ? 'text-flame' : 'text-slate-200'}`}>
-          {value.toFixed(decimals)}{unit}
+        <span className="tabular text-[11px] text-slate-200 text-right">
+          {current ? <>{current.label} <span className="text-mute text-[9px]">({current.count})</span></> : <span className="text-mute">any of {options.length}</span>}
         </span>
       </div>
-      <div className="relative">
-        <input type="range" min={min} max={max} step={step} value={value}
-               onChange={(e) => onChange(parseFloat(e.target.value))} />
-        {markerPercent !== null && (
-          <div className="absolute -top-0.5 w-px h-3 bg-flame pointer-events-none"
-               style={{ left: `${markerPercent}%` }} />
-        )}
-      </div>
+      {options.length <= 6 ? (
+        <div className="flex flex-wrap gap-1">
+          {options.map((o) => (
+            <button key={o.key} onClick={() => onChange(value === o.key ? null : o.key)} title={o.detail}
+                    className={`px-1.5 py-0.5 rounded text-[10px] border transition-colors duration-150
+                      ${value === o.key ? 'border-cryo/70 bg-cryo/15 text-white' : 'border-edge text-mute hover:text-slate-200'}`}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <input type="range" min={0} max={options.length - 1} step={1} value={Math.max(0, idx)}
+                 aria-label={`${label}: recorded values`}
+                 onChange={(e) => onChange(options[Number(e.target.value)].key)}
+                 className={idx < 0 ? 'opacity-40' : ''} />
+          {value != null && <button onClick={() => onChange(null)} className="text-[9px] text-mute hover:text-flame shrink-0">any</button>}
+        </div>
+      )}
+      {current?.detail && <div className="text-[9px] text-mute mt-0.5">{current.detail}</div>}
     </div>
   )
 }
 
-function TestChip({ test, investigations }: {
-  test: TestRecord; investigations: Dataset['investigations']
-}) {
-  const n = test.normalized
-  const investigation = investigations.find((i) => i.psi_id === test.psi_id)
+/** Gravity: two measured ends and a hatched band of no data between them.
+ *  Moon and Mars are selectable so you can SEE that there is nothing there. */
+function GravityTrack({ gravity, setGravity, has1g }: { gravity: Gravity; setGravity: (g: Gravity) => void; has1g: boolean }) {
+  const stops: { g: Gravity; label: string; pos: number; disabled?: boolean }[] = [
+    { g: '0g', label: '0 g', pos: 0 },
+    { g: 'moon', label: 'Moon', pos: 16 },
+    { g: 'mars', label: 'Mars', pos: 38 },
+    { g: '1g', label: '1 g', pos: 100, disabled: !has1g },
+  ]
+  return (
+    <section>
+      <div className="label mb-1.5">Gravity</div>
+      <div className="relative h-9 mx-3">
+        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-2.5 rounded-full overflow-hidden border border-edge">
+          <div className="absolute inset-y-0 left-0 w-[4%] bg-cryo/40" />
+          <div className="absolute inset-y-0 left-[4%] right-[4%] hatched" />
+          <div className="absolute inset-y-0 right-0 w-[4%] bg-ember/40" />
+        </div>
+        {stops.map((s) => (
+          <button key={s.g} onClick={() => !s.disabled && setGravity(s.g)} disabled={s.disabled}
+                  title={s.disabled ? 'No normal-gravity result is recorded for these tests' : undefined}
+                  className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 group disabled:cursor-not-allowed"
+                  style={{ left: `${s.pos}%` }}>
+            <span className={`block w-3.5 h-3.5 rounded-full border-2 transition-all duration-200
+              ${gravity === s.g ? (s.g === 'moon' || s.g === 'mars' ? 'bg-star border-star scale-125' : 'bg-cryo border-cryo scale-125')
+                : s.disabled ? 'bg-deep border-edge' : 'bg-deep border-mute group-hover:border-slate-200'}`} />
+            <span className={`absolute top-4 left-1/2 -translate-x-1/2 text-[9px] whitespace-nowrap
+              ${s.g === 'moon' || s.g === 'mars' ? 'text-star' : s.disabled ? 'text-mute/40' : 'text-mute'}`}>{s.label}</span>
+          </button>
+        ))}
+      </div>
+      <p className="mt-2 text-[10px] text-mute leading-snug">
+        Only 0 g (flight) and 1 g (where a reference exists) were measured. The hatched band has no PSI data;
+        Moon and Mars show that honestly instead of a guess.
+      </p>
+    </section>
+  )
+}
+
+function TestChip({ t, data }: { t: TestRecord; data: Dataset }) {
+  const n = t.normalized
+  const inv = data.investigations.find((i) => i.psi_id === t.psi_id)
   return (
     <div className="panel-flat p-2 hover:border-cryo/40 transition-colors duration-200">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-mono text-cryo">
-          {test.psi_id} · {test.test_number ?? `row ${test.row_index}`}
-        </span>
-        {investigation?.doi && (
-          <a href={investigation.doi_url!} target="_blank" rel="noreferrer"
-             className="text-[9px] text-mute hover:text-cryo transition-colors">DOI ↗</a>
-        )}
+        <span className="text-[10px] font-mono text-cryo">{invLabel(data, t.psi_id)} · {t.test_number ?? `row ${t.row_index}`}</span>
+        {inv?.doi_url && <a href={inv.doi_url} target="_blank" rel="noreferrer" className="text-[9px] text-mute hover:text-cryo">DOI ↗</a>}
       </div>
       <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-1 text-[10px] tabular text-mute">
-        {n.o2_percent != null && <span>O₂ {n.o2_percent}%</span>}
-        {n.flow_cm_s != null && <span>{n.flow_cm_s} cm/s</span>}
+        {(n.o2_display ?? n.o2_percent) != null && <span>O₂ {n.o2_display ?? `${n.o2_percent}%`}</span>}
+        {n.flow_sequence_cm_s.length > 1 ? <span>{n.flow_sequence_cm_s.join(' → ')} cm/s</span>
+          : n.flow_cm_s != null && <span>{n.flow_cm_s} cm/s</span>}
         {n.pressure_atm != null && <span>{n.pressure_atm} atm</span>}
-        {n.burn_time_s != null && <span className="text-slate-300">{n.burn_time_s}s</span>}
+        {n.droplet_d0_mm != null && <span>d₀ {n.droplet_d0_mm} mm</span>}
+        {n.burn_time_s != null && <span className="text-slate-300">{n.burn_time_s} s</span>}
       </div>
       {n.outcome && <div className="mt-1 text-[10px] text-star">{n.outcome}</div>}
     </div>

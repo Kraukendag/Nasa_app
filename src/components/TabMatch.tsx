@@ -17,6 +17,7 @@ import { OrbitControls } from '@react-three/drei'
 import { useRef, useState } from 'react'
 import * as THREE from 'three'
 import FlameMesh from './FlameMesh'
+import type { Dataset } from '../data'
 
 /** The matchstick: a wooden shaft with a dark head that chars once lit. */
 function Matchstick({ lit }: { lit: boolean }) {
@@ -67,7 +68,9 @@ function Floor({ gravityOn }: { gravityOn: boolean }) {
   )
 }
 
-export default function TabMatch({ onOpenLab }: { onOpenLab: () => void }) {
+export default function TabMatch({ data, onOpenLab, onOpenInsights }: {
+  data: Dataset; onOpenLab: () => void; onOpenInsights: () => void
+}) {
   const [lit, setLit] = useState(false)
   const [gravityOn, setGravityOn] = useState(true)
 
@@ -122,6 +125,27 @@ export default function TabMatch({ onOpenLab }: { onOpenLab: () => void }) {
         <p className="mt-3 text-xs text-mute/70">Drag to rotate · scroll to zoom</p>
       </div>
 
+      {/* ---------- Three key insights: the takeaway in ten seconds ----------
+          Each headline is computed by the data pipeline from the PSI rows and
+          cites its source; none is written by hand on this page. */}
+      <aside className="relative z-10 px-6 sm:px-10 lg:px-0 lg:absolute lg:top-8 lg:right-8 lg:w-[360px] space-y-2 stagger">
+        <div className="label">What NASA's data shows</div>
+        {data.findings.key_insights.map((k, n) => (
+          <div key={k.id} className="panel p-3 backdrop-blur-md">
+            <div className="flex gap-2.5">
+              <span className="tabular text-[11px] text-cryo mt-0.5">{n + 1}</span>
+              <div>
+                <div className="text-[12.5px] text-slate-100 leading-snug font-medium">{k.headline}</div>
+                <div className="text-[9.5px] text-mute mt-1 font-mono">
+                  {k.psi_id}{k.doi ? ` · DOI ${k.doi}` : ''}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+        <button onClick={onOpenInsights} className="text-[11px] text-cryo hover:underline">All insights, rankings and open questions →</button>
+      </aside>
+
       {/* ---------- Control dock, bottom ---------- */}
       <div className="relative z-10 mt-auto p-4 sm:p-6">
         <div className="max-w-5xl mx-auto flex flex-col items-center gap-4">
@@ -130,8 +154,9 @@ export default function TabMatch({ onOpenLab }: { onOpenLab: () => void }) {
                           anim-fade-up">
             <span className="w-1.5 h-1.5 rounded-full bg-star shrink-0" />
             <span>
-              There is no slider between these two settings. NASA has never measured
-              combustion at Moon or Mars gravity — so we do not draw it.
+              No slider between these settings: NASA's PSI repository holds no partial-gravity
+              combustion data. (Partial-gravity flame tests exist from parabolic flights, but not
+              in PSI.) So we do not draw Moon or Mars gravity.
             </span>
           </div>
 
