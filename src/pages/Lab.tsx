@@ -13,14 +13,16 @@
 //  choices, and always holds a single material. Nothing is interpolated.
 // =============================================================================
 
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { go } from '../App'
 import type { Dataset } from '../data'
 import { cardFor, evaluateFlexModel, invLabel } from '../data'
 import FlammabilityMap from '../components/FlammabilityMap'
 import Schematic from '../components/Schematic'
-import type { BurnerKind, Ending, SampleShape } from '../components/Specimen'
+import type { BurnerKind, Ending, SampleShape, Timeline } from '../components/Specimen'
+import { decideRegime } from '../lab/regime'
+import type { Regime } from '../lab/regime'
 import { DIMENSIONS, applySelection, optionsFor, recorded } from '../lab/dimensions'
 import type { Option, Selection, State } from '../lab/dimensions'
 import { OUTCOME_MEANINGS, summarise, summariseOutcomes } from '../outcomes'
@@ -155,8 +157,10 @@ export default function Lab({ data }: { data: Dataset }) {
   }
   // Overall length x width only when every matching test agrees (SAFFIRE-I and
   // -III list the same sample as 40.6 x 94 and 94 x 40.6 cm).
-  const lengthCm = onlyValue(result.map((t) => t.normalized.sample_length_cm as number | null))
-  const widthCm = onlyValue(result.map((t) => t.normalized.sample_width_cm as number | null))
+  // Only from tests of the DRAWN shape: a fabric's 29 x 5 cm must never be
+  // printed under a rod (the matching set can mix shapes).
+  const lengthCm = onlyValue(sameShape.map((t) => t.normalized.sample_length_cm as number | null))
+  const widthCm = onlyValue(sameShape.map((t) => t.normalized.sample_width_cm as number | null))
   const flowShown = round(sel.flow != null ? Number(sel.flow) : median(result.map((t) => t.normalized.flow_cm_s)), 2)
   const direction = (sel.direction ?? mostCommon(result.map((t) => t.normalized.flow_direction))) as
     'concurrent' | 'opposed' | 'stagnation' | null
@@ -238,6 +242,29 @@ export default function Lab({ data }: { data: Dataset }) {
   const highlight = useMemo(() => new Set(result.map((t) => t.id)), [result])
   const mapTests = useMemo(() => rows.filter((t) => ['PSI-25', 'PSI-98', 'PSI-99'].includes(t.psi_id)), [rows])
   const neverLit = ending === 'none'
+
+  // ---- How the 3D flame behaves, with the NASA evidence for it ------------
+  const flameletTests = useMemo(() => data.findings.flamelets.map((f) => f.test)
+    .filter((id) => result.some((t) => t.psi_id === 'PSI-25' && t.test_number === id)), [data.findings.flamelets, result])
+  const regimeInput = {
+    state, shape, flow: state === 'solid' ? flowShown : null, lowestFlow: null, direction, topClass: top?.cls ?? null,
+    flameletTests, matchingCount: result.length, coolFlameRecorded: outcomes.coolFlamesRecorded,
+    coolFlameTerritory: outcomes.coolFlameTerritory, burner,
+  }
+  const regime: Regime = decideRegime({ ...regimeInput, gravity: partialG ? 'none' : gravity === '1g' ? '1g' : '0g', ending })
+  // The normal-gravity twin for the side-by-side view (SAFFIRE-II recorded both).
+  const outcomes1g = useMemo(() => summariseOutcomes(result, '1g'), [result])
+  const ending1g: Ending = outcomes1g.outcomes[0] ? (ENDING[outcomes1g.outcomes[0].cls] ?? 'full') : 'full'
+  const regime1g: Regime = decideRegime({ ...regimeInput, gravity: '1g', ending: ending1g, topClass: outcomes1g.outcomes[0]?.cls ?? null })
+  const [split, setSplit] = useState(false)
+  const [photo, setPhoto] = useState(false)
+  useEffect(() => { if (!has1g) setSplit(false) }, [has1g])
+  const tl = useRef<Timeline>({ t: 0, playing: false, duration: 1, reignite: null, phase: 'Ready' })
+  const tl1 = useRef<Timeline>({ t: 0, playing: false, duration: 1, reignite: null, phase: 'Ready' })
+  const runKey = [shape, regime.behaviour, ending, gravity, flowShown, direction, chosen, split].join('|')
+  // New conditions start a new run (instead of jumping mid-burn).
+  useEffect(() => { for (const r of [tl, tl1]) { r.current.t = 0; r.current.reignite = null; r.current.playing = lit } }, [runKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  const photoItem = mediaFor(psiShown, shape).find((m) => m.kind === 'image')
 
   // ------------------------------------------------------------------------
   return (
@@ -325,31 +352,43 @@ export default function Lab({ data }: { data: Dataset }) {
       {/* ============================ CENTRE ============================ */}
       <section className="order-1 lg:order-none xl:overflow-y-auto p-5 sm:p-6 space-y-6 min-w-0">
         <figure className="figure">
-          <div className="viewport h-[360px] sm:h-[480px] rounded-none">
+          <div className="viewport h-[380px] sm:h-[500px] rounded-none">
             {partialG ? (
               <PartialGravity gravity={gravity} />
             ) : (
               <Suspense fallback={<div className="h-full grid place-items-center text-slate-400 small">Loading 3D view…</div>}>
-                <Specimen shape={shape} dims={sampleDims} lit={lit && !neverLit} ending={ending}
-                          gravity={gravity === '1g' ? '1g' : '0g'} o2={o2Shown}
-                          flowCmS={state === 'solid' ? flowShown : null} direction={state === 'solid' ? direction : null}
-                          spreadMmS={outcomes.spreadRate?.median ?? null} fuel={chosen}
-                          droplet={state === 'liquid' ? { d0: d0 ?? 2.5, dExt, burnTime: burnT } : null}
-                          fiber={fiberAll} burner={burner} burnerSizeMm={burnerMm} />
+                <div className={`h-full ${split ? 'grid grid-cols-2 divide-x divide-white/10' : ''}`}>
+                  {(split ? ['0g', '1g'] as const : [gravity === '1g' ? '1g' as const : '0g' as const]).map((g) => (
+                    <div key={g} className="relative h-full">
+                      <Specimen shape={shape} dims={sampleDims} lit={lit && !neverLit} gravity={g}
+                                regime={g === '1g' && split ? regime1g : regime} timeline={g === '1g' && split ? tl1 : tl}
+                                runKey={runKey} tag={split ? (g === '1g' ? '1 g' : '0 g') : undefined} o2={o2Shown}
+                                flowCmS={state === 'solid' ? flowShown : null} direction={state === 'solid' ? direction : null}
+                                fuel={chosen} droplet={state === 'liquid' ? { d0: d0 ?? 2.5, dExt, burnTime: burnT } : null}
+                                fiber={fiberAll} burner={burner} burnerSizeMm={burnerMm} />
+                    </div>
+                  ))}
+                </div>
               </Suspense>
             )}
             {!partialG && (
-              <div className="absolute bottom-3 left-3 right-3 flex flex-wrap items-center gap-2">
-                <button onClick={() => setLit((v) => !v)} disabled={!result.length}
-                        className="px-4 py-2 rounded-md small font-medium bg-white text-ink hover:bg-slate-100 disabled:opacity-40">
-                  {lit ? 'Reset' : neverLit ? 'Try to ignite' : state === 'solid' ? 'Ignite at the top' : 'Ignite'}
-                </button>
-                <span className="hud text-slate-300">drag to orbit · scroll to zoom</span>
-              </div>
+              <RunControls lit={lit} neverLit={neverLit} canStart={result.length > 0} state={state}
+                           timelines={split ? [tl, tl1] : [tl]} regime={regime}
+                           onIgnite={() => { setLit(true); for (const r of [tl, tl1]) { r.current.t = 0; r.current.reignite = null; r.current.playing = true } }}
+                           onReset={() => setLit(false)}
+                           has1g={has1g} split={split} setSplit={setSplit}
+                           hasPhoto={!!photoItem} photo={photo} setPhoto={setPhoto} />
             )}
             {!partialG && lit && neverLit && (
               <div className="absolute top-3 left-3 max-w-xs rounded bg-black/60 px-3 py-2 small text-slate-100 enter">
                 None of the matching tests established a flame, so none is drawn.
+              </div>
+            )}
+            {photo && photoItem && !partialG && (
+              <div className="absolute top-3 right-3 w-[46%] max-w-[340px] rounded-md overflow-hidden bg-black/80 border border-white/15 enter">
+                <img src={`${import.meta.env.BASE_URL}media/${photoItem.file}`} alt={`${photoItem.title}: ${photoItem.caption}`} className="w-full aspect-[3/2] object-contain bg-black" />
+                <p className="px-2.5 py-1.5 text-[12px] leading-snug text-slate-200">Real NASA photo · {photoItem.nasaId}{photoItem.related ? ' · related experiment' : ''}
+                  {' '}· <a href={mediaUrl(photoItem)} target="_blank" rel="noreferrer" className="text-sky-300">source</a></p>
               </div>
             )}
           </div>
@@ -376,6 +415,20 @@ export default function Lab({ data }: { data: Dataset }) {
             <span className="text-mute">Source: {result.length} matching test{result.length === 1 ? '' : 's'}{psiShown.length ? `, ${psiShown.map((p) => invLabel(data, p)).join(', ')}` : ''}.</span>
           </figcaption>
         </figure>
+
+        {!partialG && (
+          <section className="card p-5">
+            <h3 className="small font-semibold">Why this flame looks like this: {regime.label}</h3>
+            <ul className="mt-2 space-y-2">
+              {regime.evidence.map((e) => (
+                <li key={e.text} className="small text-ink2 grid sm:grid-cols-[1fr_240px] gap-x-4">
+                  <span>{e.text}</span><span className="caption sm:text-right">{e.cite}</span>
+                </li>
+              ))}
+            </ul>
+            {split && <p className="caption mt-3">Right panel (1 g): {regime1g.label.toLowerCase()}; ending from SAFFIRE-II's 1 g burn-length column.</p>}
+          </section>
+        )}
 
         <RealImagery psi={psiShown} shape={shape} />
 
@@ -751,5 +804,64 @@ function RealImagery({ psi, shape }: { psi: string[]; shape: string }) {
         <span className="text-mute"> Source: NASA Image and Video Library (images.nasa.gov) and NASA Scientific Visualization Studio (svs.gsfc.nasa.gov/31394); IDs as shown. Items marked “related experiment” are other NASA investigations (SoFIE, Candle Flames in Microgravity), not PSI tables.</span>
       </figcaption>
     </figure>
+  )
+}
+
+/** Play / pause / scrub the run, plus the extra actions NASA's evidence allows. */
+function RunControls({ lit, neverLit, canStart, state, timelines, regime, onIgnite, onReset, has1g, split, setSplit, hasPhoto, photo, setPhoto }: {
+  lit: boolean; neverLit: boolean; canStart: boolean; state: State; timelines: React.MutableRefObject<Timeline>[]; regime: Regime
+  onIgnite: () => void; onReset: () => void; has1g: boolean; split: boolean; setSplit: (v: boolean) => void
+  hasPhoto: boolean; photo: boolean; setPhoto: (v: boolean) => void
+}) {
+  // The 3D scene owns the clock; poll it ten times a second for the UI.
+  const [view, setView] = useState({ t: 0, d: 1, playing: false, phase: 'Ready', re: false })
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const c = timelines[0].current
+      setView({ t: c.t, d: c.duration, playing: c.playing, phase: c.phase, re: c.reignite != null })
+    }, 100)
+    return () => window.clearInterval(id)
+  }, [timelines])
+  const set = (fn: (c: Timeline) => void) => timelines.forEach((r) => fn(r.current))
+  const done = view.t >= view.d - 0.01
+  const spreading = view.phase === 'Flamelets spreading'
+  return (
+    <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/70 to-transparent">
+      {lit && !neverLit && (
+        <div className="flex items-center gap-3 mb-2">
+          <button className="text-white text-[13px] px-2 py-1 rounded border border-white/25 hover:bg-white/10 w-16"
+                  onClick={() => set((c) => { if (done) { c.t = 0; c.reignite = null } c.playing = !c.playing || done })}>
+            {done ? 'Replay' : view.playing ? 'Pause' : 'Play'}
+          </button>
+          <input type="range" min={0} max={1000} value={Math.round((view.t / view.d) * 1000)} aria-label="Scrub through the burn"
+                 onChange={(e) => set((c) => { c.t = (Number(e.target.value) / 1000) * c.duration; c.playing = false })} className="flex-1" />
+          <span className="text-slate-200 text-[12.5px] w-40 text-right truncate">{view.phase}</span>
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <button onClick={lit ? onReset : onIgnite} disabled={!canStart}
+                className="px-4 py-2 rounded-md small font-medium bg-white text-ink hover:bg-slate-100 disabled:opacity-40">
+          {lit ? 'Reset' : neverLit ? 'Try to ignite' : state === 'solid' ? 'Ignite at the top' : 'Ignite'}
+        </button>
+        {lit && regime.canReignite && (
+          <button disabled={!spreading || view.re} onClick={() => set((c) => { c.reignite = c.t })}
+                  className="px-3 py-2 rounded-md text-[13px] text-white border border-white/30 hover:bg-white/10 disabled:opacity-40"
+                  title="NASA Glenn: when the airflow is increased, flamelets flare up and re-form a full flame front">
+            {view.re ? 'Airflow turned up' : 'Turn the airflow back up'}
+          </button>
+        )}
+        {has1g && (
+          <button onClick={() => setSplit(!split)} className={`px-3 py-2 rounded-md text-[13px] border ${split ? 'bg-white text-ink border-white' : 'text-white border-white/30 hover:bg-white/10'}`}>
+            0 g | 1 g side by side
+          </button>
+        )}
+        {hasPhoto && (
+          <button onClick={() => setPhoto(!photo)} className={`px-3 py-2 rounded-md text-[13px] border ${photo ? 'bg-white text-ink border-white' : 'text-white border-white/30 hover:bg-white/10'}`}>
+            Compare with a real NASA photo
+          </button>
+        )}
+        <span className="hud text-slate-300 hidden md:inline ml-auto">drag to orbit · scroll to zoom</span>
+      </div>
+    </div>
   )
 }

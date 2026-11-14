@@ -150,7 +150,7 @@ export const volumeFragmentShader = /* glsl */ `
         float s = f.y * uSooty;
         float temp = clamp(h, 0.0, 1.4);
         // Clean burning glows blue and faint; soot glows bright yellow-orange.
-        vec3 blue = vec3(0.10, 0.28, 1.0) * (0.55 + 0.6 * temp) + vec3(0.25, 0.35, 0.55) * smoothstep(0.9, 1.4, temp);
+        vec3 blue = vec3(0.10, 0.26, 1.0) * (0.55 + 0.5 * min(temp, 1.0)) + vec3(0.20, 0.30, 0.50) * smoothstep(1.0, 1.4, temp);
         vec3 c = mix(blue * 1.5, sootColour(temp * 0.85) * 1.6, s);
         float dens = h * stepLen * mix(16.0, 22.0, s);
         col += c * dens * (1.0 - a);

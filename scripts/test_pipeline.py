@@ -185,6 +185,37 @@ def _():
     assert "allowRemoteModels = false" in code, "the model must never be fetched from the internet"
 
 
+@check("one counting rule: every BASS-II count agrees with its parts and with the prose")
+def _():
+    bc = findings["bass2_counts"]
+    assert bc["observations"] == 125 and bc["endings_report"] == 110, bc
+    assert sum(bc["by_class_report"].values()) == bc["endings_report"]
+    assert sum(bc["by_class"].values()) == bc["endings_total"] == bc["endings_report"] + len(bc["endings_table"])
+    assert len(bc["no_category"]) == bc["observations"] - bc["endings_report"]
+    r4 = " ".join(e["text"] for e in next(r for r in findings["recommendations"] if r["id"] == "R4")["evidence"])
+    for cls in ("extinguished_low_flow", "extinguished_flow_stopped", "blowoff"):
+        assert str(bc["by_class"][cls]) in r4, (cls, bc["by_class"][cls], r4[:200])
+
+
+@check("review fixes stay fixed: coverage 1 g, scale, rounding, source labels, glossary")
+def _():
+    sil = findings["coverage"]["grid"]["Silicone"]["cells"]["O\u2082 not recorded"]["1 g"]
+    assert sil == 4, sil                                     # SAFFIRE-II 1 g burns are counted
+    s2 = next(i for i in invs if i["psi_id"] == "PSI-99")
+    assert s2["scale_class"] != "large" and s2["max_sample_area_cm2"] == 145.0, s2["scale_class"]
+    pm = next(p for p in lit["points"] if p["material"] == "PMMA")
+    assert pm["pct_of_1g"] == 38, pm["pct_of_1g"]            # 0.15 / 0.40 = 37.5% -> 38%
+    for k, src in lit["sources"].items():
+        assert src["tier"] in ("nasa_report", "nasa_research_elsewhere"), k
+        assert (src["tier"] == "nasa_report") == (src["publisher"] == "NASA"), k
+        assert src["reliability"], k
+    for g in lit["glossary"]:
+        assert g["source"] in lit["sources"] and g["quote"] and g["where"], g["term"]
+    text = json.dumps(findings) + json.dumps(lit)
+    for bad in ("the particles that cause false alarms", "every attempt at", "gravity stayed constant", "the first spacecraft fire tests"):
+        assert bad not in text, bad
+
+
 @check("the FLEX model beats always guessing the common outcome")
 def _():
     m = flex["metrics"]

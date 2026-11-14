@@ -153,9 +153,16 @@ FLAMELET_FIGURE = {
 }
 
 
+def _pct(a, b):
+    """Percentage rounded half-up on the decimal value (0.15/0.40 -> 38, not 37)."""
+    from decimal import ROUND_HALF_UP, Decimal
+    return int((Decimal(str(a)) / Decimal(str(b)) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
 def build_literature():
     from glossary import GLOSSARY
-    return {"glossary": GLOSSARY, "sources": SOURCES, "points": POINTS, "luci_notes": LUCI_NOTES,
+    points = [{**p, "pct_of_1g": _pct(p["value"], p["compare_1g"])} for p in POINTS]
+    return {"glossary": GLOSSARY, "sources": SOURCES, "points": points, "luci_notes": LUCI_NOTES,
             "saffire_iv_vi": SAFFIRE_IV_VI, "statements": STATEMENTS,
             "flamelet_figure": FLAMELET_FIGURE,
             "note": "Values checked against the NTRS documents listed. Not PSI data; never used in the Lab's matching or the FLEX model."}

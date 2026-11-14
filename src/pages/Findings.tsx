@@ -24,10 +24,6 @@ const NEG_TITLES: Record<string, string> = {
   instrument_or_record: 'Instrument problems and missing records',
 }
 
-/** Percentage rounded half-up on the decimal value: 0.15 / 0.40 = 37.5% -> 38%.
- *  (Plain Math.round gave 37 because 0.375 * 100 is 37.4999... in floating point.) */
-const pct = (a: number, b: number) => Math.round(Number(((a / b) * 100).toFixed(6)))
-
 export default function Findings({ data }: { data: Dataset }) {
   const f = data.findings
   const lit = data.literature
@@ -86,7 +82,7 @@ export default function Findings({ data }: { data: Dataset }) {
                   {lit.points.map((p, i) => (
                     <tr key={i}><td>{p.material}</td><td>{p.quantity}</td>
                       <td className="text-right num">{p.value} {p.unit}</td><td className="text-right num">{p.compare_1g} {p.unit}</td>
-                      <td className="num hidden sm:table-cell">{pct(p.value, p.compare_1g)}% of the 1 g value</td></tr>
+                      <td className="num hidden sm:table-cell">{p.pct_of_1g}% of the 1 g value</td></tr>
                   ))}
                 </tbody>
               </table>

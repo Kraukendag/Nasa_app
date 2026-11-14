@@ -21,6 +21,7 @@ const SITE = [
   ['#/findings', 'Findings', 'What the data shows, what failed, what surprised, and verified results from beyond PSI.'],
   ['#/ranking', 'Ranking', 'Which investigations matter most for a mission, with every step of the scoring explained.'],
   ['#/questions', 'Research questions', 'Fifty-plus open questions where knowledge about fire in space is still missing.'],
+  ['#/search', 'AI search', 'Ask in your own words; a small AI model in your browser finds the closest records, findings and questions.'],
   ['#/pipeline', 'Pipeline', 'How the data was built, and where AI did the work: reading a 144-page NASA report.'],
 ]
 

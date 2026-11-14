@@ -1,37 +1,53 @@
 // =============================================================================
 //  SPECIMEN  (the 3D view in the Experiment Lab)
 // =============================================================================
-//  A sample in a schematic flow duct, ignited at the top, with a flame that
-//  spreads down until it has engulfed the sample -- or stops, the way the
-//  matching NASA tests actually ended.
+//  The recorded sample in its apparatus, burning the way the matching NASA
+//  tests burned. Every flame is VOLUMETRIC (src/three/volumeFlame.ts) and its
+//  behaviour comes from src/lab/regime.ts, where each behaviour carries the
+//  NASA evidence for it:
 //
-//  WHAT DRIVES WHAT
-//  ----------------
-//  * Shape and size: the recorded geometry (rod diameter, sheet width, sphere
-//    diameter, droplet diameter).
-//  * Airflow: the recorded speed and direction, drawn as white particles
-//    moving ALONG the sample, as in the BASS duct and the Saffire flow unit.
-//  * Flame orientation: in 1 g the flame rises. In microgravity the airflow
-//    decides: concurrent flow pushes the flame ahead of the front over fresh
-//    fuel; opposed flow keeps it short at the leading edge; a rod in
-//    stagnation flow carries a cap "like a candle flame at the end of a fat
-//    wick" (Olson, NASA/TM-2004-213114).
-//  * The ending: the most common recorded outcome of the matching tests --
-//    burns through, goes out partway, flashes briefly, or blows off.
-//  * Colour, flicker and exact flame size are illustration, and labelled so.
+//    sheet, fabric, film, slab  lit at the top; a flame front spreads down
+//                               and engulfs the sample, or, for thin fuels at
+//                               very low airflow, breaks into FLAMELETS that
+//                               eat branching char fingers (and re-form a
+//                               front if the airflow is turned back up)
+//    rod                        a cap on the tip; quench (shrinks to a blue
+//                               hemisphere and oscillates) or blow-off (a hole
+//                               opens at the tip)
+//    sphere, candle             a shell around the sample
+//    droplet                    a shell shrinking with the droplet; extinction
+//                               at the recorded diameter, disruption, or a
+//                               faint cool-flame glow after visible extinction
+//    gas burners                sphere, disk or jet; a faint cool flame where
+//                               CFI-G records one
+//
+//  TIMING. One timeline per run (`timeline` ref, owned by the Lab so it can
+//  show play / pause / scrub). Everything is a pure function of time t, so
+//  dragging the slider backwards works, and nothing jumps when settings change
+//  (the Lab restarts the run instead).
+//
+//  Colour, flicker and exact flame size are illustration; shape, orientation,
+//  behaviour and ending follow the data.
 // =============================================================================
 
-import { Html, OrbitControls } from '@react-three/drei'
+import { Html, OrbitControls, PerformanceMonitor } from '@react-three/drei'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import type { MutableRefObject } from 'react'
 import * as THREE from 'three'
-import FlameMesh from './FlameMesh'
+import VolumeFlame from './VolumeFlame'
+import type { FlameSource } from '../three/volumeFlame'
+import type { Regime } from '../lab/regime'
 
 export type SampleShape = 'rod' | 'sphere' | 'slab' | 'film' | 'fabric' | 'sheet' | 'composite sheet'
   | 'candle' | 'spherical section' | 'droplet' | 'burner'
 export type BurnerKind = 'sphere' | 'disk' | 'jet'
 export type Ending = 'full' | 'partial' | 'brief' | 'blowoff' | 'none'
 type Dir = 'concurrent' | 'opposed' | 'stagnation' | null
+
+/** The run's clock, shared with the Lab's play / pause / scrub controls. */
+export interface Timeline { t: number; playing: boolean; duration: number; reignite: number | null; phase: string }
+export const newTimeline = (): Timeline => ({ t: 0, playing: false, duration: 1, reignite: null, phase: 'Ready' })
 
 export interface SpecimenProps {
   shape: SampleShape
@@ -41,104 +57,59 @@ export interface SpecimenProps {
   direction: Dir
   o2: number | null
   lit: boolean
-  ending: Ending
-  /** Recorded spread rate (mm/s) for the time-lapse label; null = illustrative pace. */
-  spreadMmS?: number | null
+  regime: Regime
+  timeline: MutableRefObject<Timeline>
   fuel?: string | null
   droplet?: { d0: number; dExt: number | null; burnTime: number | null } | null
   fiber?: boolean
   burner?: BurnerKind
   burnerSizeMm?: number | null
+  /** Changing this restarts the run (new conditions). */
+  runKey?: string
+  /** Small label drawn in the scene, e.g. "0 g" / "1 g" in the split view. */
+  tag?: string
 }
 
 // -----------------------------------------------------------------------------
-//  How the flame looks under the chosen conditions
+//  Time
 // -----------------------------------------------------------------------------
-interface Style { shape: number; stretch: number; width: number; flicker: number; sooty: number; dim: number; flip: boolean; intensity: number }
+const IGN = 1.2          // igniter glowing at the top
+const SPREAD_S = 11      // seconds of animation for a full spread
+const END_S = 2.2        // the ending (fade, quench, blow-off)
+const stopAtFor = (e: Ending) => (e === 'partial' ? 0.55 : e === 'brief' ? 0.05 : e === 'blowoff' ? 0.4 : e === 'none' ? 0 : 1)
 
-function flameStyle(gravity: SpecimenProps['gravity'], dir: Dir, flow: number | null, o2: number | null): Style {
-  const f = Math.min(1, (flow ?? 0) / 20)
-  const intensity = o2 != null ? Math.max(0.2, Math.min(1, (o2 - 11) / 25)) : 0.55
-  if (gravity === '1g') return { shape: 0, stretch: 1, width: 0.9, flicker: 1, sooty: 0.85, dim: 1, flip: false, intensity }
-  if (dir === 'concurrent' && f > 0) return { shape: 0, stretch: 0.45 + 0.75 * f, width: 0.8, flicker: 0.12, sooty: 0.2 + 0.4 * intensity, dim: 0.85, flip: true, intensity }
-  if (dir === 'opposed' && f > 0) return { shape: 0.15, stretch: 0.2 + 0.18 * f, width: 0.75, flicker: 0.1, sooty: 0.12, dim: 0.8, flip: false, intensity }
-  if (dir === 'stagnation') return { shape: 0.7, stretch: 0.3, width: 0.95, flicker: 0.1, sooty: 0.18, dim: 0.8, flip: false, intensity }
-  return { shape: 0.8, stretch: 0.25, width: 0.9, flicker: 0.08, sooty: 0.1, dim: 0.65, flip: false, intensity }
+interface Phase { p: number; alive: number; igniter: number; ended: boolean; endU: number; travel: number }
+function phaseAt(t: number, ending: Ending): Phase {
+  const stopAt = stopAtFor(ending)
+  const travel = SPREAD_S * Math.max(0.05, stopAt)
+  const igniter = t < IGN ? 1 : Math.max(0, 1 - (t - IGN) * 2)
+  if (ending === 'none') return { p: 0, alive: 0, igniter, ended: t > IGN, endU: 1, travel }
+  const p = Math.min(stopAt, Math.max(0, t - IGN * 0.6) / SPREAD_S)
+  const ended = t > IGN + travel
+  const endU = ended ? Math.min(1, (t - IGN - travel) / END_S) : 0
+  const alive = t < IGN * 0.6 ? 0 : ended ? 1 - endU : Math.min(1, (t - IGN * 0.6) * 3)
+  return { p, alive, igniter, ended, endU, travel }
+}
+const durationFor = (ending: Ending) => IGN + SPREAD_S * Math.max(0.05, stopAtFor(ending)) + END_S + 0.4
+
+/** Seeded random numbers, so a run is the same every time (and scrubbable). */
+function rng(seed: number) {
+  return () => { seed |= 0; seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296 }
 }
 
 // -----------------------------------------------------------------------------
-//  The spread clock: ignite at the top, then spread to engulf, then end the
-//  way the data says. One clock per scene, read by every part each frame.
+//  Shared pieces: airflow, apparatus outline, igniter
 // -----------------------------------------------------------------------------
-interface Clock { p: number; alive: number; igniter: number; lift: number }
-const SPREAD_S = 11          // seconds of animation for a full spread
-const PAUSE_S = 2.5
-
-function useSpreadClock(lit: boolean, ending: Ending) {
-  const clock = useRef<Clock>({ p: 0, alive: 0, igniter: 0, lift: 0 })
-  const start = useRef<number | null>(null)
-  const stopAt = ending === 'partial' ? 0.5 : ending === 'brief' ? 0.05 : ending === 'blowoff' ? 0.4 : ending === 'none' ? 0 : 1
-  useFrame((state) => {
-    const c = clock.current
-    const now = state.clock.elapsedTime
-    if (!lit) { start.current = null; c.p = 0; c.alive = 0; c.igniter = 0; c.lift = 0; return }
-    if (start.current == null) start.current = now
-    const ignite = 1.2
-    const travel = SPREAD_S * Math.max(0.05, stopAt)
-    const cycle = ignite + travel + 1.6 + PAUSE_S
-    const t = (now - start.current) % cycle
-    c.igniter = t < ignite ? 1 : Math.max(0, 1 - (t - ignite) * 2)
-    if (ending === 'none') { c.alive = 0; c.p = 0; return }
-    const s = Math.max(0, t - ignite * 0.6) / SPREAD_S
-    c.p = Math.min(stopAt, s)
-    const ended = t > ignite + travel
-    // After the front stops, the flame dies away (or lifts off for blowoff).
-    const fade = ended ? Math.max(0, 1 - (t - ignite - travel) / 1.4) : 1
-    c.lift = ending === 'blowoff' && ended ? (t - ignite - travel) * 0.6 : 0
-    c.alive = t < ignite * 0.6 ? 0 : fade
-  })
-  return clock
-}
-
-// -----------------------------------------------------------------------------
-//  Shared pieces
-// -----------------------------------------------------------------------------
-const SAMPLE = { color: '#CBD3DF', roughness: 0.55, metalness: 0.04 }
-const CHAR = { color: '#2B2724', roughness: 0.95 }
-
-/** A pair of complementary clipping planes at the flame front: one keeps the
- *  unburned part below the front, the other the charred part above it. */
-function useFrontPlanes() {
-  return useMemo(() => ({
-    below: new THREE.Plane(new THREE.Vector3(0, -1, 0), 0),
-    above: new THREE.Plane(new THREE.Vector3(0, 1, 0), 0),
-  }), [])
-}
-
-function Igniter({ clock, y, w }: { clock: React.MutableRefObject<Clock>; y: number; w: number }) {
-  const mat = useRef<THREE.MeshStandardMaterial>(null)
-  useFrame(() => { if (mat.current) mat.current.emissiveIntensity = 3 * clock.current.igniter })
-  return (
-    <mesh position={[0, y + 0.04, 0]} rotation={[0, 0, Math.PI / 2]}>
-      <cylinderGeometry args={[0.012, 0.012, w, 8]} />
-      <meshStandardMaterial ref={mat} color="#8a8f99" emissive="#ff6a1a" emissiveIntensity={0} metalness={0.6} roughness={0.4} />
-    </mesh>
-  )
-}
-
-/** White dots moving along the sample at a speed set by the recorded flow. */
 function Airflow({ flowCmS, direction, height }: { flowCmS: number; direction: Dir; height: number }) {
-  const COUNT = 240
+  const COUNT = 200
   const ref = useRef<THREE.Points>(null)
   const dot = useMemo(() => {
     const c = document.createElement('canvas'); c.width = c.height = 32
     const g = c.getContext('2d')!; const gr = g.createRadialGradient(16, 16, 0, 16, 16, 16)
-    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.5, 'rgba(255,255,255,0.85)'); gr.addColorStop(1, 'rgba(255,255,255,0)')
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.5, 'rgba(255,255,255,0.8)'); gr.addColorStop(1, 'rgba(255,255,255,0)')
     g.fillStyle = gr; g.fillRect(0, 0, 32, 32); return new THREE.CanvasTexture(c)
   }, [])
-  const seeds = useMemo(() => Array.from({ length: COUNT }, () => ({
-    a: Math.random(), x: (Math.random() - 0.5) * 1.9, z: (Math.random() - 0.5) * 1.1, j: 0.7 + Math.random() * 0.6,
-  })), [])
+  const seeds = useMemo(() => Array.from({ length: COUNT }, () => ({ a: Math.random(), x: (Math.random() - 0.5) * 1.9, z: (Math.random() - 0.5) * 1.1, j: 0.7 + Math.random() * 0.6 })), [])
   useFrame((state) => {
     if (!ref.current) return
     const speed = Math.min(2, 0.1 + flowCmS * 0.05)
@@ -157,13 +128,11 @@ function Airflow({ flowCmS, direction, height }: { flowCmS: number; direction: D
   return (
     <points ref={ref}>
       <bufferGeometry><bufferAttribute attach="attributes-position" args={[new Float32Array(COUNT * 3), 3]} /></bufferGeometry>
-      <pointsMaterial size={0.045} map={dot} color="#FFFFFF" transparent opacity={0.75} alphaTest={0.05} depthWrite={false} />
+      <pointsMaterial size={0.04} map={dot} color="#FFFFFF" transparent opacity={0.55} alphaTest={0.05} depthWrite={false} />
     </points>
   )
 }
 
-/** The flow duct (or chamber) drawn as a faint outline, so the sample sits in
- *  its apparatus rather than on a floor. In microgravity there is no floor. */
 function Enclosure({ label, w, h, d }: { label: string; w: number; h: number; d: number }) {
   const geo = useMemo(() => new THREE.EdgesGeometry(new THREE.BoxGeometry(w, h, d)), [w, h, d])
   return (
@@ -176,235 +145,353 @@ function Enclosure({ label, w, h, d }: { label: string; w: number; h: number; d:
   )
 }
 
+function Igniter({ ph, y, w }: { ph: MutableRefObject<Phase>; y: number; w: number }) {
+  const mat = useRef<THREE.MeshStandardMaterial>(null)
+  useFrame(() => { if (mat.current) mat.current.emissiveIntensity = 3 * ph.current.igniter })
+  return (
+    <mesh position={[0, y + 0.04, 0]} rotation={[0, 0, Math.PI / 2]}>
+      <cylinderGeometry args={[0.012, 0.012, w, 8]} />
+      <meshStandardMaterial ref={mat} color="#8a8f99" emissive="#ff6a1a" emissiveIntensity={0} metalness={0.6} roughness={0.4} />
+    </mesh>
+  )
+}
+
+const SAMPLE = { color: '#CBD3DF', roughness: 0.55, metalness: 0.04 }
+
 // -----------------------------------------------------------------------------
-//  Sheet-like samples: fabric, sheet, film, slab
+//  Sheet-like samples: front or flamelets, with char painted onto the sample
 // -----------------------------------------------------------------------------
-function SheetSample({ dims, shape, style, lit, clock }: {
-  dims: SpecimenProps['dims']; shape: SampleShape; style: Style; lit: boolean; clock: React.MutableRefObject<Clock>
-}) {
+interface Flamelet { id: number; x: number; y: number }
+
+/** Pre-simulate the flamelets for the whole run (fixed steps, seeded), so the
+ *  pattern is identical every time and the slider can scrub through it. */
+function simulateFlamelets(W: number, H: number, travel: number, seed: number): { dt: number; steps: Flamelet[][]; breakP: number } {
+  const r = rng(seed)
+  const dt = 0.05
+  const breakP = 0.12
+  const n0 = THREE.MathUtils.clamp(Math.round(W / 0.12), 3, 10)
+  const minSep = W / (n0 * 1.6)
+  const speed = H / SPREAD_S * 0.85
+  let id = 0
+  let live: Flamelet[] = Array.from({ length: n0 }, (_, i) => ({ id: id++, x: -W / 2 + (W * (i + 0.5)) / n0 + (r() - 0.5) * minSep * 0.4, y: 0 }))
+  const steps: Flamelet[][] = []
+  const total = Math.ceil(travel / dt) + 1
+  for (let s = 0; s < total; s++) {
+    live = live.map((f) => ({ ...f, y: f.y + speed * dt * (0.8 + r() * 0.4), x: THREE.MathUtils.clamp(f.x + (r() - 0.5) * 0.02, -W / 2 + 0.01, W / 2 - 0.01) }))
+    // Births: a flamelet with room on one side splits (a branch in the char).
+    const born: Flamelet[] = []
+    for (const f of live) {
+      const near = Math.min(...live.filter((g) => g !== f).map((g) => Math.abs(g.x - f.x)), 9)
+      if (near > minSep * 1.8 && r() < 0.35 * dt && live.length + born.length < 14) {
+        const side = r() < 0.5 ? -1 : 1
+        born.push({ id: id++, x: THREE.MathUtils.clamp(f.x + side * minSep * 0.7, -W / 2 + 0.01, W / 2 - 0.01), y: f.y })
+      }
+    }
+    live = live.concat(born)
+    // Deaths: a flamelet hemmed in by a neighbour is starved of oxygen.
+    live = live.filter((f) => !live.some((g) => g !== f && g.id < f.id && Math.abs(g.x - f.x) < minSep * 0.55 && Math.abs(g.y - f.y) < 0.05) && r() > 0.04 * dt)
+    if (!live.length) live = [{ id: id++, x: (r() - 0.5) * W * 0.6, y: steps.length ? steps[steps.length - 1][0]?.y ?? 0 : 0 }]
+    steps.push(live)
+  }
+  return { dt, steps, breakP }
+}
+
+function SheetSample({ p }: { p: Scenep }) {
+  const { dims, shape, regime, tl, g1, dir, ph } = p
   const H = 1.5, top = H / 2
   const W = THREE.MathUtils.clamp(((dims.width_mm ?? 20) / 20) * 0.75, 0.4, 1.2)
   const thick = shape === 'slab' ? THREE.MathUtils.clamp(((dims.thickness_mm ?? 3) / 10) * 0.3, 0.05, 0.3) : 0.02
-  const planes = useFrontPlanes()
-  const front = useRef<THREE.Group>(null)
-  const ember = useRef<THREE.Mesh>(null)
-  const alive = useRef(1)
-  const N = Math.max(3, Math.round(W / 0.16))
-  const colour = shape === 'fabric' ? '#D9CBA8' : shape === 'composite sheet' ? '#C9B79A' : SAMPLE.color
+  const fingering = regime.behaviour === 'fingering' && !g1
+  const travel = phaseAt(0, regime.ending).travel
+  const sim = useMemo(() => (fingering ? simulateFlamelets(W, H, travel, 7 + Math.round(W * 100)) : null), [fingering, W, travel])
+  const sources = useRef<FlameSource[]>([])
+  const live = useRef<{ sooty?: number; dim?: number; flicker?: number }>({})
+
+  // The sample's appearance is painted on canvases: char where it burned,
+  // and a glowing ember edge at the flame.
+  const { charTex, emberTex, charCtx, emberCtx } = useMemo(() => {
+    const mk = () => { const c = document.createElement('canvas'); c.width = 128; c.height = 256; return c }
+    const a = mk(), b = mk()
+    const t1 = new THREE.CanvasTexture(a), t2 = new THREE.CanvasTexture(b)
+    t1.colorSpace = THREE.SRGBColorSpace
+    return { charTex: t1, emberTex: t2, charCtx: a.getContext('2d')!, emberCtx: b.getContext('2d')! }
+  }, [])
+  const painted = useRef(-1)
+  const base = shape === 'fabric' ? '#D9CBA8' : shape === 'composite sheet' ? '#C9B79A' : shape === 'film' ? '#D6E0EA' : '#CBD3DF'
+  const char = shape === 'film' ? '#6E6A66' : '#231E1B'
+  const px = (x: number) => ((x + W / 2) / W) * 128
+  const py = (yDown: number) => (yDown / H) * 256
 
   useFrame(() => {
-    const c = clock.current
-    const yf = top - c.p * H
-    planes.below.constant = yf
-    planes.above.constant = -yf
-    alive.current = c.alive
-    if (front.current) { front.current.position.y = yf + c.lift; front.current.position.x = 0 }
-    if (ember.current) { ember.current.position.y = yf; (ember.current.material as THREE.MeshBasicMaterial).opacity = 0.9 * c.alive }
+    const t = tl.current.t
+    const f = ph.current
+    const yFront = f.p * H
+    const out: FlameSource[] = []
+    const ec = emberCtx
+    ec.clearRect(0, 0, 128, 256)
+
+    if (!sim) {
+      // ---- A continuous front -------------------------------------------
+      charCtx.fillStyle = base; charCtx.fillRect(0, 0, 128, 256)
+      charCtx.fillStyle = char; charCtx.fillRect(0, 0, 128, py(yFront))
+      if (f.alive > 0.05) { ec.fillStyle = `rgba(255,120,40,${0.9 * f.alive})`; ec.fillRect(0, py(yFront) - 2, 128, 4) }
+      const axis: [number, number, number] = g1 ? [0, 1, 0] : dir === 'concurrent' ? [0, -1, 0] : [0, 1, 0]
+      out.push({ pos: [0, top - yFront, 0], radius: 0.11, segment: W / 2 - 0.04, axis,
+        stretch: g1 ? 1.6 : dir === 'concurrent' ? 0.9 : dir === 'opposed' ? 0.25 : 0.4,
+        shell: g1 ? 0.1 : 0.3, power: f.alive * 1.2 * (regime.ending === 'blowoff' && f.ended ? 1 - f.endU : 1) })
+      if (regime.ending === 'blowoff' && f.ended) out[0].pos[1] -= f.endU * 0.4   // lifted off downstream
+      painted.current = -1
+    } else {
+      // ---- Front, then flamelets --------------------------------------------
+      const breakY = sim.breakP * H
+      const tSince = Math.max(0, (t - IGN * 0.6) - sim.breakP * SPREAD_S)
+      const step = Math.min(sim.steps.length - 1, Math.floor(tSince / sim.dt))
+      const broken = f.p >= sim.breakP
+      if (!broken || step < painted.current || painted.current < 0) {
+        charCtx.fillStyle = base; charCtx.fillRect(0, 0, 128, 256)
+        charCtx.fillStyle = char; charCtx.fillRect(0, 0, 128, py(Math.min(yFront, breakY)))
+        painted.current = broken ? -1 : -1
+      }
+      if (broken) {
+        // Paint every flamelet trail from the last painted step to now.
+        const from = Math.max(0, painted.current + 1)
+        charCtx.fillStyle = char
+        for (let s = from; s <= step; s++) for (const fl of sim.steps[s]) {
+          charCtx.beginPath(); charCtx.arc(px(fl.x), py(breakY + fl.y), (0.035 / W) * 128, 0, Math.PI * 2); charCtx.fill()
+        }
+        painted.current = step
+        const flames = sim.steps[step]
+        const re = tl.current.reignite
+        const u = re != null && t > re ? Math.min(1, (t - re) / 1.6) : 0
+        const meanY = flames.reduce((a, b) => a + b.y, 0) / Math.max(1, flames.length)
+        for (const fl of flames.slice(0, 14)) {
+          ec.fillStyle = `rgba(90,150,255,${0.9 * f.alive})`
+          ec.beginPath(); ec.arc(px(fl.x), py(breakY + fl.y), 3, 0, Math.PI * 2); ec.fill()
+          out.push({ pos: [fl.x, top - breakY - fl.y, 0], radius: 0.05 * (1 + 1.5 * u), stretch: 0.15, shell: 0.6,
+            axis: dir === 'concurrent' ? [0, -1, 0] : [0, 1, 0], power: f.alive * 0.9 })
+        }
+        // Airflow turned back up: the flamelets flare up and re-form a front.
+        if (u > 0) out.push({ pos: [0, top - breakY - meanY, 0], radius: 0.08, segment: W / 2 - 0.04, axis: [0, 1, 0], stretch: 0.6, shell: 0.3, power: u * f.alive })
+      } else if (f.alive > 0.05) {
+        ec.fillStyle = `rgba(255,120,40,${0.9 * f.alive})`; ec.fillRect(0, py(yFront) - 2, 128, 4)
+        out.push({ pos: [0, top - yFront, 0], radius: 0.07, segment: W / 2 - 0.04, axis: [0, 1, 0], stretch: 0.3, shell: 0.4, power: f.alive })
+      }
+    }
+    charTex.needsUpdate = true; emberTex.needsUpdate = true
+    sources.current = out
+    live.current = { sooty: g1 ? 0.9 : sim ? 0.05 : 0.25 }
   })
 
-  // Fabric and films leave a dark residue; a slab leaves charred material.
-  const charOpacity = shape === 'film' ? 0.25 : shape === 'fabric' ? 0.85 : 0.95
-  const flameScale = shape === 'slab' ? 0.55 : 0.45
   return (
     <group>
-      <mesh><boxGeometry args={[W, H, thick]} /><meshStandardMaterial color={colour} roughness={0.8} clippingPlanes={[planes.below]} side={THREE.DoubleSide} /></mesh>
-      <mesh><boxGeometry args={[W, H, thick]} /><meshStandardMaterial {...CHAR} transparent opacity={charOpacity} clippingPlanes={[planes.above]} side={THREE.DoubleSide} /></mesh>
-      <mesh ref={ember}><boxGeometry args={[W, 0.018, thick + 0.012]} /><meshBasicMaterial color="#ff7a2a" transparent opacity={0} /></mesh>
-      <Igniter clock={clock} y={top} w={W} />
-      {/* The flame front: a row of flames across the width, on both faces. */}
-      <group ref={front}>
-        {Array.from({ length: N }).flatMap((_, i) => {
-          const x = -W / 2 + (W * (i + 0.5)) / N
-          return [1, -1].map((side) => (
-            <FlameMesh key={`${i}${side}`} lit={lit} aliveRef={alive} shape={style.shape} stretch={style.stretch}
-                       width={style.width} flicker={style.flicker} sooty={style.sooty} dim={style.dim}
-                       intensity={style.intensity} flip={style.flip} scale={flameScale}
-                       position={[x, 0, side * (thick / 2 + 0.015)]} castLight={i === Math.floor(N / 2) && side === 1} />
-          ))
-        })}
-      </group>
+      <mesh><boxGeometry args={[W, H, thick]} />
+        <meshStandardMaterial map={charTex} emissiveMap={emberTex} emissive="#ffffff" emissiveIntensity={1.4} roughness={0.85} /></mesh>
+      <Igniter ph={ph} y={top} w={W} />
+      <VolumeFlame sources={sources} box={[W + 0.5, g1 ? 1.5 : 0.9, 0.55]} flicker={g1 ? 1 : 0.1} sooty={g1 ? 0.9 : 0.25}
+                   dim={g1 ? 1 : 0.85} quality={p.quality} live={live} light />
     </group>
   )
 }
 
 // -----------------------------------------------------------------------------
-//  Rod: a flame cap on the tip; the rod burns back as the cap moves down
+//  Rod: a cap on the tip; quench or blow-off at the end
 // -----------------------------------------------------------------------------
-function RodSample({ dims, style, lit, clock }: { dims: SpecimenProps['dims']; style: Style; lit: boolean; clock: React.MutableRefObject<Clock> }) {
+function RodSample({ p }: { p: Scenep }) {
+  const { dims, regime, g1, ph, tl } = p
   const r = THREE.MathUtils.clamp(((dims.diameter_mm ?? 9.5) / 12.7) * 0.2, 0.07, 0.24)
   const H = 1.4, top = H / 2
-  const planes = useFrontPlanes()
-  const cap = useRef<THREE.Group>(null)
-  const charRing = useRef<THREE.Mesh>(null)
-  const alive = useRef(1)
+  const rodRef = useRef<THREE.Mesh>(null)
+  const sources = useRef<FlameSource[]>([])
+  const live = useRef<{ sooty?: number; dim?: number; flicker?: number }>({})
   useFrame(() => {
-    const c = clock.current
-    const tip = top - c.p * H * 0.55            // the end regresses as it burns
-    planes.below.constant = tip
-    alive.current = c.alive
-    if (cap.current) cap.current.position.y = tip + c.lift
-    if (charRing.current) charRing.current.position.y = tip - 0.02
+    const f = ph.current
+    const t = tl.current.t
+    const tip = top - f.p * H * 0.5                 // the end regresses as it burns
+    if (rodRef.current) { const len = H / 2 + tip; rodRef.current.scale.y = Math.max(0.01, len / H); rodRef.current.position.y = tip - len / 2 }
+    const out: FlameSource[] = []
+    let power = f.alive, rad = r * 1.7, sooty = g1 ? 0.9 : 0.35
+    if (!g1 && regime.quench && f.ended) {
+      // "the flame shrinks to a hemispherical blue flame and oscillates with
+      //  increasing amplitude just before going out" (BASS-II report p. 64)
+      const u = f.endU
+      rad *= 1 - 0.5 * u
+      sooty = 0.35 * (1 - Math.min(1, u * 2))
+      power = (1 - u * u) * (1 + 0.7 * u * Math.sin(t * 14))
+    }
+    const hole = !g1 && regime.holeBlowoff && f.ended ? f.endU : 0
+    if (g1) out.push({ pos: [0, tip + r * 0.2, 0], radius: r * 1.5, axis: [0, 1, 0], stretch: 1.8, shell: 0.1, power })
+    else {
+      // centre of the cap: the stagnation region, where a blow-off hole opens
+      out.push({ pos: [0, tip + r * 0.45, 0], radius: rad * 0.75, axis: [0, -1, 0], stretch: 0.3, shell: 0.65, power: power * (1 - Math.min(1, hole * 2.5)) })
+      // the cap's skirt around the tip, carried downstream along the rod
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2
+        out.push({ pos: [Math.cos(a) * r * 1.05, tip - hole * 0.5, Math.sin(a) * r * 1.05], radius: rad * 0.42, axis: [0, -1, 0], stretch: 0.5, shell: 0.55, power: power * (1 - hole) * 0.55 })
+      }
+    }
+    sources.current = out
+    live.current = { sooty }
   })
   return (
     <group>
-      <mesh><cylinderGeometry args={[r, r, H, 40]} /><meshStandardMaterial {...SAMPLE} clippingPlanes={[planes.below]} /></mesh>
-      {/* The melting, charred end of the rod */}
-      <mesh ref={charRing}><cylinderGeometry args={[r * 1.02, r * 1.02, 0.05, 40]} /><meshStandardMaterial color="#5a3a24" roughness={0.6} /></mesh>
-      <Igniter clock={clock} y={top} w={r * 3} />
-      <group ref={cap}>
-        <FlameMesh lit={lit} aliveRef={alive} shape={Math.max(style.shape, style.flip ? 0 : 0.35)}
-                   stretch={style.stretch} width={style.width * 1.1} flicker={style.flicker} sooty={style.sooty}
-                   dim={style.dim} intensity={style.intensity} flip={style.flip}
-                   scale={r * 7 + 0.25} position={[0, style.flip ? 0.02 : -0.03, 0]} castLight />
-      </group>
+      <mesh ref={rodRef}><cylinderGeometry args={[r, r, H, 40]} /><meshStandardMaterial {...SAMPLE} /></mesh>
+      <Igniter ph={ph} y={top} w={r * 3} />
+      <VolumeFlame sources={sources} box={[r * 6 + 0.4, g1 ? 1.4 : 0.9, r * 6 + 0.4]} flicker={g1 ? 1 : 0.08}
+                   sooty={g1 ? 0.9 : 0.35} dim={g1 ? 1 : 0.85} quality={p.quality} live={live} light />
     </group>
   )
 }
 
 // -----------------------------------------------------------------------------
-//  Sphere / spherical section: a ring of flame slides down, then envelops it
+//  Sphere / spherical section and candle: a shell around the sample
 // -----------------------------------------------------------------------------
-function SphereSample({ dims, half, style, lit, clock }: {
-  dims: SpecimenProps['dims']; half: boolean; style: Style; lit: boolean; clock: React.MutableRefObject<Clock>
-}) {
+function SphereSample({ p, half }: { p: Scenep; half: boolean }) {
+  const { dims, g1, ph } = p
   const R = THREE.MathUtils.clamp(((dims.diameter_mm ?? 20) / 20) * 0.36, 0.16, 0.6)
-  const planes = useFrontPlanes()
-  const ring = useRef<(THREE.Group | null)[]>([])
-  const ringAlive = useRef(1)
-  const envelope = useRef(0)
-  const N = 8
+  const sources = useRef<FlameSource[]>([])
+  const charMat = useRef<THREE.MeshStandardMaterial>(null)
   const thetaMax = half ? Math.PI / 2 : Math.PI
   useFrame(() => {
-    const c = clock.current
-    const th = Math.max(0.12, c.p * thetaMax)
+    const f = ph.current
+    const th = Math.max(0.15, f.p * thetaMax)
     const yf = R * Math.cos(th)
-    planes.below.constant = yf
-    planes.above.constant = -yf
-    // The ring fades as the flame closes around the whole sample.
-    ringAlive.current = c.alive * (1 - THREE.MathUtils.smoothstep(c.p, 0.65, 1))
-    envelope.current = c.alive * THREE.MathUtils.smoothstep(c.p, 0.25, 0.85)
-    ring.current.forEach((g, i) => {
-      if (!g) return
-      const ph = (i / N) * Math.PI * 2
-      g.position.set((R + 0.02) * Math.sin(th) * Math.cos(ph), yf + c.lift, (R + 0.02) * Math.sin(th) * Math.sin(ph))
-    })
+    const out: FlameSource[] = []
+    if (g1) out.push({ pos: [0, yf, 0], radius: R * 0.9, axis: [0, 1, 0], stretch: 1.6, shell: 0.1, power: f.alive })
+    else {
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2
+        out.push({ pos: [(R + 0.03) * Math.sin(th) * Math.cos(a), yf, (R + 0.03) * Math.sin(th) * Math.sin(a)], radius: R * 0.5, axis: [0, 1, 0], stretch: 0.2, shell: 0.6, power: f.alive * 0.55 })
+      }
+      // once engulfed, a shell around the whole sample
+      out.push({ pos: [0, 0, 0], radius: R * 1.35, axis: [0, 1, 0], stretch: 0.05, shell: 0.85, power: f.alive * THREE.MathUtils.smoothstep(f.p, 0.5, 1) })
+    }
+    sources.current = out
+    if (charMat.current) charMat.current.color.setRGB(0.8 - 0.65 * f.p, 0.83 - 0.68 * f.p, 0.87 - 0.72 * f.p)
   })
   const geo = half ? <sphereGeometry args={[R, 48, 24, 0, Math.PI * 2, 0, Math.PI / 2]} /> : <sphereGeometry args={[R, 48, 32]} />
   return (
     <group>
-      <mesh>{geo}<meshStandardMaterial {...SAMPLE} side={THREE.DoubleSide} clippingPlanes={[planes.below]} /></mesh>
-      <mesh>{geo}<meshStandardMaterial {...CHAR} side={THREE.DoubleSide} clippingPlanes={[planes.above]} /></mesh>
-      <Igniter clock={clock} y={R} w={R * 0.8} />
-      {Array.from({ length: N }).map((_, i) => (
-        <group key={i} ref={(g) => { ring.current[i] = g }}>
-          <FlameMesh lit={lit} aliveRef={ringAlive} shape={style.shape * 0.5} stretch={style.stretch * 0.7}
-                     width={style.width} flicker={style.flicker} sooty={style.sooty} dim={style.dim}
-                     intensity={style.intensity} flip={style.flip} scale={R * 1.1 + 0.12} />
-        </group>
-      ))}
-      {/* Once engulfed: a shell around the sample in microgravity, a rising
-          plume in 1 g, a downstream wake if concurrent flow pushes it. */}
-      <FlameMesh lit={lit} aliveRef={envelope} shape={style.flicker > 0.5 ? 0.15 : style.flip ? 0.25 : 0.9}
-                 stretch={style.flicker > 0.5 ? 1 : style.stretch + 0.3} width={1.05} flicker={style.flicker}
-                 sooty={style.sooty} dim={style.dim} intensity={style.intensity} flip={style.flip}
-                 scale={(R * 2.6) / 0.36} position={[0, style.flip ? R * 0.35 : -R * 0.55, 0]} castLight />
+      <mesh>{geo}<meshStandardMaterial ref={charMat} roughness={0.7} side={THREE.DoubleSide} /></mesh>
+      <Igniter ph={ph} y={R} w={R * 0.8} />
+      <VolumeFlame sources={sources} box={[R * 3.4, g1 ? R * 4.5 : R * 3.4, R * 3.4]} flicker={g1 ? 1 : 0.08}
+                   sooty={g1 ? 0.9 : 0.2} dim={g1 ? 1 : 0.8} quality={p.quality} light />
     </group>
   )
 }
 
-// -----------------------------------------------------------------------------
-//  Candle, droplet, burners
-// -----------------------------------------------------------------------------
-function CandleSample({ style, lit, gravity, clock }: { style: Style; lit: boolean; gravity: SpecimenProps['gravity']; clock: React.MutableRefObject<Clock> }) {
-  const alive = useRef(1)
-  useFrame(() => { alive.current = clock.current.alive })
+function CandleSample({ p }: { p: Scenep }) {
+  const { g1, ph } = p
+  const sources = useRef<FlameSource[]>([])
+  useFrame(() => {
+    const a = ph.current.alive
+    sources.current = [{ pos: [0, 0.32, 0], radius: g1 ? 0.13 : 0.16, axis: [0, 1, 0], stretch: g1 ? 2.2 : 0.1, shell: g1 ? 0.1 : 0.8, power: a }]
+  })
   return (
     <group position={[0, -0.25, 0]}>
       <mesh><cylinderGeometry args={[0.17, 0.17, 1.0, 40]} /><meshStandardMaterial color="#EDE6D3" roughness={0.7} /></mesh>
       <mesh position={[0, 0.55, 0]}><cylinderGeometry args={[0.012, 0.012, 0.1, 6]} /><meshStandardMaterial color="#2A2420" /></mesh>
-      <FlameMesh lit={lit} aliveRef={alive} shape={gravity === '1g' ? 0 : 0.85} stretch={gravity === '1g' ? 1 : 0.3}
-                 width={0.9} flicker={style.flicker} sooty={gravity === '1g' ? 0.9 : 0.15} dim={gravity === '1g' ? 1 : 0.6}
-                 intensity={style.intensity} scale={0.75} position={[0, 0.58, 0]} castLight />
+      <group position={[0, 0.25, 0]}>
+        <VolumeFlame sources={sources} box={[0.8, g1 ? 1.4 : 0.8, 0.8]} flicker={g1 ? 1 : 0.06} sooty={g1 ? 0.95 : 0.15}
+                     dim={g1 ? 1 : 0.8} quality={p.quality} light />
+      </group>
     </group>
   )
 }
 
-function DropletSample({ anim, fiber, lit, gravity, fuel, style }: {
-  anim: NonNullable<SpecimenProps['droplet']>; fiber: boolean; lit: boolean; gravity: SpecimenProps['gravity']; fuel?: string | null; style: Style
-}) {
-  const drop = useRef<THREE.Mesh>(null)
-  const flame = useRef<THREE.Group>(null)
-  const alive = useRef(1)
+// -----------------------------------------------------------------------------
+//  Droplet: shrinking shell; extinction, disruption, cool-flame glow
+// -----------------------------------------------------------------------------
+function DropletSample({ p }: { p: Scenep }) {
+  const { g1, ph, regime, droplet, fiber, fuel, tl } = p
+  const anim = droplet ?? { d0: 2.5, dExt: null, burnTime: null }
+  const drops = useRef<(THREE.Mesh | null)[]>([])
+  const sources = useRef<FlameSource[]>([])
+  const live = useRef<{ sooty?: number; dim?: number; flicker?: number }>({})
   const r0 = THREE.MathUtils.clamp(anim.d0 / 12, 0.08, 0.4)
-  // Methanol burns with an almost invisible blue flame; heptane and dodecane
-  // are sootier and brighter.
   const isMethanol = (fuel ?? '').toLowerCase().includes('methanol')
-  const sooty = gravity === '1g' ? 0.9 : isMethanol ? 0.04 : 0.45
-  const dim = isMethanol ? 0.5 : 0.85
-  useFrame((state) => {
-    const T = anim.burnTime && anim.burnTime > 0 ? anim.burnTime : 8
-    const dEnd = anim.dExt ?? anim.d0 * 0.4
-    const K = (anim.d0 ** 2 - dEnd ** 2) / T
-    const playback = Math.max(1, T / 9)
-    const cycle = T + 2.2
-    const t = ((state.clock.elapsedTime * playback) % (cycle * playback)) / playback
-    const d = Math.sqrt(Math.max(0, anim.d0 ** 2 - K * Math.min(t, T)))
-    const s = d / anim.d0
-    alive.current = t < T ? Math.min(1, t * 3) : 0      // ignites over a third of a second
-    if (drop.current) drop.current.scale.setScalar(s)
-    if (flame.current) flame.current.scale.setScalar(Math.max(0.001, s))
+  // Ends: where the flame goes out, as a share of the starting diameter.
+  const extFrac = regime.ending === 'full' ? 0 : anim.dExt && anim.dExt < anim.d0 ? anim.dExt / anim.d0 : 0.45
+  useFrame(() => {
+    const f = ph.current
+    const t = tl.current.t
+    // d^2 law: the droplet's area shrinks steadily over the burn.
+    const s = Math.sqrt(Math.max(0, 1 - f.p * (1 - extFrac * extFrac)))
+    const out: FlameSource[] = []
+    const breakUp = regime.disruption && f.p > 0.55 ? Math.min(1, (f.p - 0.55) / 0.3) : 0
+    const N = breakUp > 0 ? 4 : 1
+    for (let i = 0; i < 4; i++) {
+      const m = drops.current[i]
+      if (!m) continue
+      const a = (i / 4) * Math.PI * 2 + 0.4
+      const off = breakUp * 0.5
+      m.visible = i < N && s > 0.02
+      m.position.set(i === 0 && N === 1 ? 0 : Math.cos(a) * off, i === 0 && N === 1 ? 0 : Math.sin(a) * off * 0.7, 0)
+      m.scale.setScalar(N === 1 ? s : s * 0.55)
+    }
+    // Visible flame; after it goes out, the droplet may keep shrinking with a
+    // faint cool-flame glow (cool-flame territory, not observed in the table).
+    const hot = f.alive
+    for (let i = 0; i < N; i++) {
+      const a = (i / 4) * Math.PI * 2 + 0.4
+      const off = N === 1 ? 0 : breakUp * 0.5
+      out.push({ pos: [Math.cos(a) * off, Math.sin(a) * off * 0.7, 0], radius: r0 * (N === 1 ? 2.6 : 1.5) * Math.max(0.25, s),
+        axis: [0, 1, 0], stretch: g1 ? 1.4 : 0.05, shell: g1 ? 0.15 : 1, power: hot * (g1 ? 0.9 : 0.32) * (N === 1 ? 1 : 1 - breakUp * 0.6) })
+    }
+    if (regime.coolFlameAfter && f.ended) out.push({ pos: [0, 0, 0], radius: r0 * 2.2 * s, axis: [0, 1, 0], stretch: 0, shell: 0.95, power: 0.18 * (1 - f.endU * 0.3) })
+    if (regime.coolFlameAfter && f.ended && drops.current[0]) drops.current[0].scale.setScalar(Math.max(0.02, s * (1 - f.endU * 0.4)))
+    sources.current = out
+    live.current = { sooty: g1 ? 0.9 : isMethanol ? 0.02 : regime.coolFlameAfter && f.ended ? 0 : 0.45, dim: isMethanol ? 0.6 : 0.9 }
+    void t
   })
   return (
     <group>
-      {fiber && (
-        <mesh rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[0.004, 0.004, 2.2, 6]} /><meshStandardMaterial color="#8C9AB0" /></mesh>
-      )}
-      <mesh ref={drop}><sphereGeometry args={[r0, 40, 28]} />
-        <meshPhysicalMaterial color="#BFE4FA" roughness={0.06} transmission={0.85} thickness={0.4} ior={1.37} /></mesh>
-      <group ref={flame}>
-        <FlameMesh lit={lit} aliveRef={alive} shape={gravity === '1g' ? 0.1 : 1} stretch={gravity === '1g' ? 1 : 0.3}
-                   width={1} flicker={gravity === '1g' ? 1 : 0.05} sooty={sooty} dim={dim} intensity={style.intensity}
-                   scale={(r0 * 3.4) / 0.18} position={[0, -r0 * 0.75, 0]} castLight />
-      </group>
+      {fiber && <mesh rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[0.004, 0.004, 2.2, 6]} /><meshStandardMaterial color="#8C9AB0" /></mesh>}
+      {[0, 1, 2, 3].map((i) => (
+        <mesh key={i} ref={(m) => { drops.current[i] = m }} visible={i === 0}>
+          <sphereGeometry args={[r0, 40, 28]} />
+          <meshPhysicalMaterial color="#BFE4FA" roughness={0.06} transmission={0.85} thickness={0.4} ior={1.37} />
+        </mesh>
+      ))}
+      <VolumeFlame sources={sources} box={[r0 * 8 + 0.3, g1 ? r0 * 12 : r0 * 8 + 0.3, r0 * 8 + 0.3]} flicker={g1 ? 1 : 0.04}
+                   sooty={0.45} dim={0.9} quality={p.quality} live={live} light />
     </group>
   )
 }
 
-function BurnerSample({ kind, sizeMm, lit, gravity, style }: { kind: BurnerKind; sizeMm?: number | null; lit: boolean; gravity: SpecimenProps['gravity']; style: Style }) {
-  const g1 = gravity === '1g'
-  if (kind === 'sphere') {
-    // CFI-G / ACME: a porous spherical burner; in microgravity the flame is a
-    // sphere around it.
-    return (
-      <group>
+// -----------------------------------------------------------------------------
+//  Gas burners
+// -----------------------------------------------------------------------------
+function BurnerSample({ p }: { p: Scenep }) {
+  const { g1, ph, regime, burner = 'jet', burnerSizeMm } = p
+  const sources = useRef<FlameSource[]>([])
+  const live = useRef<{ sooty?: number; dim?: number; flicker?: number }>({})
+  const rad = THREE.MathUtils.clamp(((burnerSizeMm ?? 25) / 50) * 0.5, 0.25, 0.5)
+  useFrame(() => {
+    const f = ph.current
+    const hot = f.alive
+    const cool = regime.coolFlameAfter && f.ended ? 0.2 : 0
+    const out: FlameSource[] = []
+    if (burner === 'sphere') out.push({ pos: [0, 0, 0], radius: g1 ? 0.3 : 0.4, axis: [0, 1, 0], stretch: g1 ? 1.5 : 0.04, shell: g1 ? 0.15 : 1, power: g1 ? hot + cool : (hot + cool) * 0.32 })
+    else if (burner === 'disk') {
+      out.push({ pos: [0, 0.03, 0], radius: rad * 0.6, axis: [0, 1, 0], stretch: g1 ? 1.4 : 0.15, shell: g1 ? 0.15 : 0.8, power: (hot + cool) * (g1 ? 1 : 0.45) })
+      for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; out.push({ pos: [Math.cos(a) * rad * 0.65, 0.03, Math.sin(a) * rad * 0.65], radius: rad * 0.4, axis: [0, 1, 0], stretch: g1 ? 1.2 : 0.15, shell: 0.6, power: (hot + cool) * 0.6 }) }
+    } else out.push({ pos: [0, 0.05, 0], radius: g1 ? 0.12 : 0.17, axis: [0, 1, 0], stretch: g1 ? 2.4 : 2.8, shell: 0.1, power: hot + cool })
+    sources.current = out
+    live.current = { sooty: cool > 0 ? 0 : g1 ? 0.85 : burner === 'jet' ? 0.85 : 0.3 }
+  })
+  return (
+    <group position={[0, burner === 'jet' ? -0.6 : burner === 'disk' ? -0.25 : 0, 0]}>
+      {burner === 'sphere' && <>
         <mesh position={[0, -0.6, 0]}><cylinderGeometry args={[0.03, 0.03, 1.0, 10]} /><meshStandardMaterial color="#8A94A6" metalness={0.5} /></mesh>
         <mesh><sphereGeometry args={[0.2, 40, 28]} /><meshStandardMaterial color="#C8B79B" roughness={0.95} /></mesh>
-        <FlameMesh lit={lit} shape={g1 ? 0.1 : 1} stretch={g1 ? 1 : 0.3} width={1.05} flicker={g1 ? 1 : 0.06}
-                   sooty={g1 ? 0.8 : 0.3} dim={0.85} intensity={style.intensity} scale={g1 ? 1.8 : 2.9}
-                   position={[0, g1 ? -0.1 : -0.42, 0]} castLight />
-      </group>
-    )
-  }
-  if (kind === 'disk') {
-    // ACME BRE: a flat porous disk burner (25 or 50 mm); a dome-shaped flame.
-    const rad = THREE.MathUtils.clamp(((sizeMm ?? 25) / 50) * 0.5, 0.25, 0.5)
-    return (
-      <group position={[0, -0.25, 0]}>
+      </>}
+      {burner === 'disk' && <>
         <mesh position={[0, -0.05, 0]}><cylinderGeometry args={[rad, rad, 0.1, 48]} /><meshStandardMaterial color="#C8B79B" roughness={0.95} /></mesh>
         <mesh position={[0, -0.5, 0]}><cylinderGeometry args={[0.05, 0.05, 0.8, 12]} /><meshStandardMaterial color="#8A94A6" metalness={0.5} /></mesh>
-        <FlameMesh lit={lit} shape={g1 ? 0.1 : 0.75} stretch={g1 ? 1 : 0.45} width={g1 ? 1 : 1.25} flicker={g1 ? 1 : 0.06}
-                   sooty={g1 ? 0.85 : 0.35} dim={0.85} intensity={style.intensity} scale={rad * 4}
-                   position={[0, g1 ? 0 : -rad * 0.6, 0]} castLight />
-      </group>
-    )
-  }
-  // SPICE / E-FIELD: fuel issues from a nozzle into co-flowing air; a long jet
-  // flame. Microgravity jet flames are wider, round-tipped and sooty.
-  return (
-    <group position={[0, -0.55, 0]}>
-      <mesh><cylinderGeometry args={[0.035, 0.05, 0.9, 20]} /><meshStandardMaterial color="#B4BDCB" metalness={0.4} roughness={0.4} /></mesh>
-      <FlameMesh lit={lit} shape={0} stretch={g1 ? 1 : 1.3} width={g1 ? 0.75 : 1.05} flicker={g1 ? 1 : 0.08}
-                 sooty={0.9} dim={1} intensity={style.intensity} scale={1.5} position={[0, 0.45, 0]} castLight />
+      </>}
+      {burner === 'jet' && <mesh position={[0, -0.4, 0]}><cylinderGeometry args={[0.035, 0.05, 0.9, 20]} /><meshStandardMaterial color="#B4BDCB" metalness={0.4} roughness={0.4} /></mesh>}
+      <VolumeFlame sources={sources} box={burner === 'jet' ? [0.9, 2.4, 0.9] : [1.5, g1 ? 1.8 : 1.4, 1.5]}
+                   flicker={g1 ? 1 : 0.06} sooty={0.5} dim={0.9} quality={p.quality} live={live} light />
     </group>
   )
 }
@@ -412,42 +499,57 @@ function BurnerSample({ kind, sizeMm, lit, gravity, style }: { kind: BurnerKind;
 // -----------------------------------------------------------------------------
 //  Scene
 // -----------------------------------------------------------------------------
-function Scene(props: SpecimenProps) {
-  const { shape, dims, gravity, flowCmS, direction, o2, lit, ending, droplet, fiber, burner, burnerSizeMm, fuel } = props
-  const clock = useSpreadClock(lit && gravity !== 'none', ending)
-  const style = flameStyle(gravity, direction, flowCmS, o2)
-  const on = lit && gravity !== 'none'
+interface Scenep extends SpecimenProps { tl: MutableRefObject<Timeline>; ph: MutableRefObject<Phase>; g1: boolean; dir: Dir; quality: number }
+
+function Scene(props: SpecimenProps & { quality: number }) {
+  const { shape, gravity, flowCmS, direction, lit, regime, timeline, tag } = props
+  const ph = useRef<Phase>(phaseAt(0, regime.ending))
+  const g1 = gravity === '1g'
+  // Advance the shared clock; derive this frame's phase from it.
+  useFrame((_, delta) => {
+    const tl = timeline.current
+    tl.duration = durationFor(regime.ending)
+    // Unlit: hold at the start. ("playing" is left alone: the Ignite button
+    // sets it in the same instant the lit prop arrives.)
+    if (!lit) tl.t = 0
+    else if (tl.playing) { tl.t = Math.min(tl.duration, tl.t + Math.min(delta, 0.1)); if (tl.t >= tl.duration) tl.playing = false }
+    ph.current = lit ? phaseAt(tl.t, regime.ending) : { p: 0, alive: 0, igniter: 0, ended: false, endU: 0, travel: 0 }
+    const f = ph.current
+    tl.phase = !lit ? 'Ready' : tl.t < IGN ? 'Igniting at the top' : !f.ended ? (regime.behaviour === 'fingering' && f.p > 0.12 ? 'Flamelets spreading' : 'Spreading')
+      : f.endU < 1 ? (regime.quench ? 'Quenching' : regime.holeBlowoff ? 'Blowing off' : regime.ending === 'full' ? 'Burning out' : 'Going out') : 'Ended'
+  })
   const solid = !['droplet', 'burner'].includes(shape)
+  const sp: Scenep = { ...props, tl: timeline, ph, g1, dir: direction }
   return (
     <>
       <Enclosure label={solid ? 'Flow duct (schematic)' : 'Combustion chamber (schematic)'} w={2.2} h={2.4} d={1.4} />
       {solid && flowCmS != null && flowCmS > 0 && <Airflow flowCmS={flowCmS} direction={direction} height={2.0} />}
-      {gravity === '1g' && (
-        <Html position={[1.15, 0.9, 0]} style={{ pointerEvents: 'none' }}>
-          <div style={{ color: '#cbd5e1', fontSize: 13, fontFamily: 'IBM Plex Sans, sans-serif' }}>g ↓</div>
+      {(g1 || tag) && (
+        <Html position={[0.95, 1.05, 0]} style={{ pointerEvents: 'none' }}>
+          <div style={{ color: '#e2e8f0', fontSize: 13, fontFamily: 'IBM Plex Sans, sans-serif', whiteSpace: 'nowrap' }}>{tag ?? (g1 ? '1 g' : '')}{g1 ? ' · gravity ↓' : ''}</div>
         </Html>
       )}
-      {(shape === 'fabric' || shape === 'sheet' || shape === 'film' || shape === 'slab' || shape === 'composite sheet') &&
-        <SheetSample dims={dims} shape={shape} style={style} lit={on} clock={clock} />}
-      {shape === 'rod' && <RodSample dims={dims} style={style} lit={on} clock={clock} />}
-      {(shape === 'sphere' || shape === 'spherical section') && <SphereSample dims={dims} half={shape === 'spherical section'} style={style} lit={on} clock={clock} />}
-      {shape === 'candle' && <CandleSample style={style} lit={on} gravity={gravity} clock={clock} />}
-      {shape === 'droplet' && droplet && <DropletSample anim={droplet} fiber={!!fiber} lit={on} gravity={gravity} fuel={fuel} style={style} />}
-      {shape === 'burner' && <BurnerSample kind={burner ?? 'jet'} sizeMm={burnerSizeMm} lit={on} gravity={gravity} style={style} />}
+      {(shape === 'fabric' || shape === 'sheet' || shape === 'film' || shape === 'slab' || shape === 'composite sheet') && <SheetSample p={sp} />}
+      {shape === 'rod' && <RodSample p={sp} />}
+      {(shape === 'sphere' || shape === 'spherical section') && <SphereSample p={sp} half={shape === 'spherical section'} />}
+      {shape === 'candle' && <CandleSample p={sp} />}
+      {shape === 'droplet' && <DropletSample p={sp} />}
+      {shape === 'burner' && <BurnerSample p={sp} />}
     </>
   )
 }
 
 export default function Specimen(props: SpecimenProps) {
+  const [quality, setQuality] = useState(1)
   return (
-    <Canvas camera={{ position: [2.4, 0.9, 3.6], fov: 40 }} dpr={[1, 1.5]}
-            gl={{ antialias: true, powerPreference: 'high-performance' }}
-            onCreated={({ gl }) => { gl.localClippingEnabled = true }}>
+    <Canvas camera={{ position: [2.4, 0.9, 3.6], fov: 40 }} dpr={[1, quality < 1 ? 1 : 1.5]}
+            gl={{ antialias: true, powerPreference: 'high-performance' }}>
+      <PerformanceMonitor onDecline={() => setQuality(0.5)} onIncline={() => setQuality(1)} />
       <color attach="background" args={['#0B0F17']} />
-      <ambientLight intensity={0.55} />
-      <directionalLight position={[3, 5, 4]} intensity={0.9} />
+      <ambientLight intensity={0.45} />
+      <directionalLight position={[3, 5, 4]} intensity={0.8} />
       <directionalLight position={[-3, 1, -3]} intensity={0.25} color="#9fb8ff" />
-      <Scene {...props} />
+      <Scene key={props.runKey} {...props} quality={quality} />
       <OrbitControls enablePan={false} minDistance={2.2} maxDistance={8} target={[0, 0, 0]} makeDefault />
     </Canvas>
   )

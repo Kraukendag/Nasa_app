@@ -32,9 +32,12 @@ export interface VolumeFlameProps {
   quality?: number
   /** Cast a flickering point light from the flame. */
   light?: boolean
+  /** Per-frame overrides set by an animating scene (e.g. a quenching flame
+   *  turning blue), without re-rendering React. */
+  live?: MutableRefObject<{ sooty?: number; dim?: number; flicker?: number }>
 }
 
-export default function VolumeFlame({ sources, box, center, offset = [0, 0, 0], flicker = 1, sooty = 1, dim = 1, quality = 1, light = false }: VolumeFlameProps) {
+export default function VolumeFlame({ sources, box, center, offset = [0, 0, 0], flicker = 1, sooty = 1, dim = 1, quality = 1, light = false, live }: VolumeFlameProps) {
   const mesh = useRef<THREE.Mesh>(null)
   const lamp = useRef<THREE.PointLight>(null)
   const ease = useRef({ flicker, sooty, dim })
@@ -57,9 +60,10 @@ export default function VolumeFlame({ sources, box, center, offset = [0, 0, 0], 
     const u = uniforms
     const k = Math.min(1, delta * 2.5)
     const e = ease.current
-    e.flicker += (flicker - e.flicker) * k
-    e.sooty += (sooty - e.sooty) * k
-    e.dim += (dim - e.dim) * k
+    const L = live?.current ?? {}
+    e.flicker += ((L.flicker ?? flicker) - e.flicker) * k
+    e.sooty += ((L.sooty ?? sooty) - e.sooty) * k
+    e.dim += ((L.dim ?? dim) - e.dim) * k
 
     // Box centre: fixed, or the power-weighted centre of the sources.
     // The centre is shifted downstream by how far each flame is drawn out, so

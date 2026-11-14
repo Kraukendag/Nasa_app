@@ -188,7 +188,7 @@ export interface LiteratureSource {
   reliability: string
 }
 export interface GlossaryEntry { term: string; plain: string; quote: string; source: string; where: string }
-export interface LiteraturePoint { source: string; g: number; material: string; quantity: string; value: number; unit: string; compare_1g: number; where: string }
+export interface LiteraturePoint { source: string; g: number; material: string; quantity: string; value: number; unit: string; compare_1g: number; where: string; pct_of_1g: number }
 export interface SaffireRow { sample: string; material: string; length_cm: number; flow_cm_s: number; direction: string; pressure_kpa: number; o2_percent: number }
 export interface Literature {
   glossary: GlossaryEntry[]
