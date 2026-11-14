@@ -26,7 +26,7 @@ export default function Home({ data }: { data: Dataset }) {
   const [lit, setLit] = useState(false)
   const [gravityOn, setGravityOn] = useState(true)
   const withOutcome = data.tests.filter((t) => t.normalized.outcome_class).length
-  const extracted = data.tests.filter((t) => t.psi_id === 'PSI-25' && (t.normalized.outcome_source ?? '').startsWith('NASA/TM')).length
+  const extracted = data.tests.filter((t) => t.psi_id === 'PSI-25' && !!t.normalized.outcome_text && (t.normalized.outcome_source ?? '').startsWith('NASA/TM')).length
   const pmma = data.materials.find((m) => m.id === 'PMMA|solid')?.lowest_sustained_o2
 
   return (

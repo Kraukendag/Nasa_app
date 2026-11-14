@@ -21,7 +21,7 @@ export default function About({ data }: { data: Dataset }) {
   const flags = Object.values(data.findings.anomaly_summary).reduce((a, b) => a + b, 0)
   const withOutcome = data.tests.filter((t) => t.normalized.outcome_class).length
   const m = data.flexModel.metrics
-  const extracted = data.tests.filter((t) => t.psi_id === 'PSI-25' && (t.normalized.outcome_source ?? '').startsWith('NASA/TM')).length
+  const extracted = data.tests.filter((t) => t.psi_id === 'PSI-25' && !!t.normalized.outcome_text && (t.normalized.outcome_source ?? '').startsWith('NASA/TM')).length
 
   return (
     <Page title="About Micro Flamma" intro={<>

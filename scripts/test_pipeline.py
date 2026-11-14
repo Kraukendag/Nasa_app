@@ -70,7 +70,7 @@ def _():
                     f"{t['test_number']}: o2 {o2} vs raw '{raw}'"
 
 
-@check("BASS-II endings quote the transcription word for word, with a page in 103-113")
+@check("BASS-II endings (125) quote the transcription word for word, with a page in 103-113")
 def _():
     with open(os.path.join(ROOT, "data_raw", "BASS-II_AppendixA_transcribed.csv"), encoding="utf-8-sig") as f:
         rows = {r["Test #"].strip(): r for r in csv.DictReader(f)}
@@ -91,7 +91,9 @@ def _():
         assert " ".join(src["Test observations (matrix)"].split()) == " ".join(text.split()), t["test_number"]
         page = int(re.search(r"p\. (\d+)", t["normalized"]["outcome_source"]).group(1))
         assert 103 <= page <= 113 and str(page) == src["Report page"].strip(), t["test_number"]
-    assert n == 126, f"{n} endings extracted from the report"
+    # 126 tests are in the report's matrices; O6 has a flow direction there but
+    # no observation, so 125 endings.
+    assert n == 125, f"{n} endings extracted from the report"
 
 
 @check("cross-check against the PSI table's own airflow cells still holds")

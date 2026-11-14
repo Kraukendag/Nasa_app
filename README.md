@@ -98,7 +98,8 @@ publishing branch, deploys `dist/` to GitHub Pages. One-time setup in the reposi
 ## BASS-II outcomes
 
 The BASS-II experimental table records conditions but not how each test ended. The
-observations and flow directions for 126 tests were transcribed (with AI assistance)
+flow directions for 126 tests and observations for 125 of them (the report gives none for
+O6) were transcribed (with AI assistance)
 from the test matrices in NASA/TM-20210011385, Appendix A, pp. 103-113, into
 `data_raw/BASS-II_AppendixA_transcribed.csv`. Every record cites its page. The summary
 category is this project's reading; NASA's words are shown verbatim beside it. The three
