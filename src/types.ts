@@ -198,6 +198,7 @@ export interface Literature {
   saffire_iv_vi: SaffireRow[]
   statements: { source: string; text: string; where: string; g?: number[] }[]
   flamelet_figure: { source: string; file: string; where: string; caption: string; setting: string }
+  instruments_bass2: { quantity: string; limit: string; quote: string; where: string }[]
   note: string
 }
 

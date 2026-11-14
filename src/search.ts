@@ -16,6 +16,12 @@ export interface SearchDoc { type: string; id: string; title: string; text: stri
 interface Index { model: string; dim: number; count: number; docs: SearchDoc[]; vectors_int8_base64: string }
 export interface Hit { doc: SearchDoc; score: number }
 
+/** Download progress of the model files (0-1), for the page's progress bar. */
+type ProgressFn = (fraction: number) => void
+let progressFn: ProgressFn | null = null
+export function onModelProgress(fn: ProgressFn | null) { progressFn = fn }
+const files = new Map<string, { loaded: number; total: number }>()
+
 let indexP: Promise<{ docs: SearchDoc[]; vecs: Int8Array; dim: number }> | null = null
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let embedP: Promise<any> | null = null
@@ -47,7 +53,19 @@ function loadModel() {
       onnx.wasm.wasmPaths = { mjs: `${base}ort/ort-wasm-simd-threaded.asyncify.mjs`, wasm: `${base}ort/ort-wasm-simd-threaded.asyncify.wasm` }
       onnx.wasm.numThreads = 1                     // GitHub Pages is not cross-origin isolated
     }
-    return pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', { dtype: 'q8', device: 'wasm' })
+    return pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', {
+      dtype: 'q8', device: 'wasm',
+      // Sum the progress of every file the model needs.
+      progress_callback: (x: { status?: string; file?: string; loaded?: number; total?: number }) => {
+        if (x.file && typeof x.loaded === 'number' && typeof x.total === 'number' && x.total > 0) {
+          files.set(x.file, { loaded: x.loaded, total: x.total })
+          let l = 0, t = 0
+          files.forEach((f) => { l += f.loaded; t += f.total })
+          progressFn?.(t ? l / t : 0)
+        }
+        if (x.status === 'ready') progressFn?.(1)
+      },
+    })
   })()
   return embedP
 }

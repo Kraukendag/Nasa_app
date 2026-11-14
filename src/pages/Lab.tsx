@@ -102,12 +102,20 @@ const rangeText = (v: (number | null | undefined)[], d: number) => {
 /** Medians of two recorded values can carry float noise (18.299999...); round for display. */
 const round = (v: number | null, d: number) => (v == null ? null : Math.round(v * 10 ** d) / 10 ** d)
 
-export default function Lab({ data }: { data: Dataset }) {
-  const [state, setState] = useState<State>('solid')
-  const [inv, setInv] = useState<string>('all')
-  const [material, setMaterial] = useState<Record<State, string>>({ solid: 'PMMA', liquid: 'Heptane', gas: 'Butane (30%)' })
-  const [sel, setSel] = useState<Selection>({})
-  const [gravity, setGravity] = useState<Gravity>('0g')
+/** The Lab's choices as they appear in a shareable link (#/lab/<json>). */
+interface LabLink { s?: State; i?: string; m?: string; c?: Selection; g?: Gravity }
+function readLink(arg: string | null): LabLink {
+  if (!arg) return {}
+  try { return JSON.parse(arg) as LabLink } catch { return {} }
+}
+
+export default function Lab({ data, arg = null }: { data: Dataset; arg?: string | null }) {
+  const link = useMemo(() => readLink(arg), []) // eslint-disable-line react-hooks/exhaustive-deps
+  const [state, setState] = useState<State>(link.s ?? 'solid')
+  const [inv, setInv] = useState<string>(link.i ?? 'all')
+  const [material, setMaterial] = useState<Record<State, string>>({ solid: 'PMMA', liquid: 'Heptane', gas: 'Butane (30%)', ...(link.s && link.m ? { [link.s]: link.m } : {}) })
+  const [sel, setSel] = useState<Selection>(link.c ?? {})
+  const [gravity, setGravity] = useState<Gravity>(link.g ?? '0g')
   const [lit, setLit] = useState(false)
   const [moonCheck, setMoonCheck] = useState(false)
 
@@ -130,7 +138,21 @@ export default function Lab({ data }: { data: Dataset }) {
   const rows = useMemo(() => inInv.filter((t) => t.normalized.material === chosen), [inInv, chosen])
 
   // Changing what burns starts the conditions (and the flame) afresh.
-  useEffect(() => { setSel({}); setMoonCheck(false); setGravity('0g'); setLit(false) }, [state, inv, chosen])
+  // Reset only when what burns actually CHANGES (not on first load), so a
+  // shared link's conditions survive loading, also under React StrictMode.
+  const burnKey = useRef(`${state}|${inv}|${chosen}`)
+  useEffect(() => {
+    const k = `${state}|${inv}|${chosen}`
+    if (k === burnKey.current) return
+    burnKey.current = k
+    setSel({}); setMoonCheck(false); setGravity('0g'); setLit(false)
+  }, [state, inv, chosen])
+  // Keep the address bar in step with the choices, so the link can be shared.
+  // replaceState: no new history entry per click, and no page reload.
+  useEffect(() => {
+    const l: LabLink = { s: state, i: inv !== 'all' ? inv : undefined, m: chosen, c: Object.keys(sel).length ? sel : undefined, g: gravity !== '0g' ? gravity : undefined }
+    window.history.replaceState(null, '', `#/lab/${encodeURIComponent(JSON.stringify(l))}`)
+  }, [state, inv, chosen, sel, gravity])
 
   const dims = DIMENSIONS.filter((d) => d.states.includes(state))
   const result = useMemo(() => applySelection(rows, sel), [rows, sel])
@@ -563,6 +585,17 @@ export default function Lab({ data }: { data: Dataset }) {
               <dt>AUC</dt><dd>{data.flexModel.metrics.auc.toFixed(2)}</dd>
             </dl>
             <p className="caption mt-2">{flex.n} FLEX tests matched. {data.flexModel.metrics.validation}. {data.flexModel.disclaimer}</p>
+          </Block>
+        )}
+
+        {psiShown.includes('PSI-25') && (
+          <Block title="Measurement limits (BASS-II, as NASA states them)">
+            <ul className="space-y-1.5">
+              {data.literature.instruments_bass2.map((x) => (
+                <li key={x.quantity} className="small text-ink2" title={`NASA: “${x.quote}”`}><b className="text-ink font-medium">{x.quantity}:</b> {x.limit}</li>
+              ))}
+            </ul>
+            <p className="caption mt-1.5">BASS-II Summary Report, NASA/TM-20210011385, {data.literature.instruments_bass2.map((x) => x.where.split(';')[0]).filter((v, i, a) => a.indexOf(v) === i).join(', ')}.</p>
           </Block>
         )}
 

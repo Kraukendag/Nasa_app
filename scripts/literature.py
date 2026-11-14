@@ -140,6 +140,18 @@ STATEMENTS = [
 ]
 
 
+# Measurement limits NASA states for the BASS-II instruments (BASS-II report).
+INSTRUMENTS_BASS2 = [
+    {"quantity": "Oxygen (O\u2082)", "limit": "\u00b10.1% O\u2082 (sensor resolution)",
+     "quote": "The resolution of the O2 sensor in the CSA-CP was 0.1 percent O2.", "where": "p. 6"},
+    {"quantity": "Carbon monoxide (CO)", "limit": "range 0\u20131,000 ppm, resolution 1 ppm (\u201cOR\u201d = above 1,000 ppm)",
+     "quote": "The CO sensor in the CSA-CP is zero calibrated every 60 days, with a range of 0 to 1,000 ppm and a resolution of 1 ppm.", "where": "p. 6"},
+    {"quantity": "Carbon dioxide (CO\u2082)", "limit": "range 0\u20135%, resolution 0.1%",
+     "quote": "The CO2 sensor was within its calibration window and had a range of 0 to 5 percent and a resolution of 0.1 percent by volume of CO2.", "where": "p. 6"},
+    {"quantity": "Airflow", "limit": "uncertain at low speeds, most of all below 1 cm/s",
+     "quote": "there are significant uncertainties in these values as the calibration at such low velocity has high error bars.", "where": "p. 13; also p. 76 (\u201c<1 cm/s\u201d)"},
+]
+
 # The NASA figure that shows flamelets (bundled in public/media).
 FLAMELET_FIGURE = {
     "source": "FLAMELETS2005",
@@ -165,4 +177,5 @@ def build_literature():
     return {"glossary": GLOSSARY, "sources": SOURCES, "points": points, "luci_notes": LUCI_NOTES,
             "saffire_iv_vi": SAFFIRE_IV_VI, "statements": STATEMENTS,
             "flamelet_figure": FLAMELET_FIGURE,
+            "instruments_bass2": INSTRUMENTS_BASS2,
             "note": "Values checked against the NTRS documents listed. Not PSI data; never used in the Lab's matching or the FLEX model."}

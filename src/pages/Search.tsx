@@ -7,9 +7,9 @@
 //  It shows existing text with its source; it never writes an answer.
 // =============================================================================
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Dataset } from '../data'
-import { search, warmUp } from '../search'
+import { onModelProgress, search, warmUp } from '../search'
 import type { Hit } from '../search'
 import { Page, Section } from '../ui'
 
@@ -31,6 +31,8 @@ export default function Search({ data }: { data: Dataset }) {
   const [hits, setHits] = useState<Hit[] | null>(null)
   const [state, setState] = useState<'idle' | 'loading' | 'error'>('idle')
   const [err, setErr] = useState('')
+  const [progress, setProgress] = useState<number | null>(null)
+  useEffect(() => { onModelProgress((f) => setProgress(f)); return () => onModelProgress(null) }, [])
 
   const run = async (text: string) => {
     if (!text.trim()) return
@@ -59,7 +61,14 @@ export default function Search({ data }: { data: Dataset }) {
           <p className="caption">Try: {EXAMPLES.map((x, i) => (
             <span key={x}>{i > 0 && ' · '}<button type="button" className="text-accent hover:underline" onClick={() => void run(x)}>{x}</button></span>
           ))}</p>
-          <p className="caption">The first search downloads the model once (about 50 MB, from this site); after that it runs offline.</p>
+          {progress != null && progress < 1 ? (
+            <div aria-live="polite">
+              <div className="h-1.5 rounded-full bg-wash overflow-hidden"><div className="h-full bg-accent transition-all" style={{ width: `${Math.round(progress * 100)}%` }} /></div>
+              <p className="caption mt-1">Downloading the AI model from this site: {Math.round(progress * 100)}% (one time only; about 50 MB)</p>
+            </div>
+          ) : (
+            <p className="caption">The first search downloads the model once (about 50 MB, from this site); after that it runs offline.</p>
+          )}
         </form>
 
         {state === 'error' && <p className="wash p-4 small">The search could not start: {err}. The keyword search on the <a href="#/data">Data</a> page still works.</p>}

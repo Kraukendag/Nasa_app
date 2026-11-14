@@ -101,7 +101,7 @@ export default function App() {
             {page === 'home' && <Home data={data} />}
             {page === 'habitat' && <Habitat data={data} />}
             {page === 'search' && <Search data={data} />}
-            {page === 'lab' && <Lab data={data} />}
+            {page === 'lab' && <Lab data={data} arg={arg} />}
             {page === 'data' && <Data data={data} arg={arg} />}
             {page === 'findings' && <Findings data={data} />}
             {page === 'ranking' && <Ranking data={data} />}

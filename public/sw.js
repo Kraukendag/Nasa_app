@@ -3,11 +3,11 @@
 // =============================================================================
 //  After the first visit, the site opens even with no internet:
 //   * pages (HTML): network first, cached copy when offline
-//   * everything else on this site (scripts, data, images, and the AI search
-//     model once it has been used): cache first, then network, and kept
+//   * everything else on this site (scripts, data, images): cache first, then
+//     network, and kept. The AI model caches itself (transformers.js).
 //  Nothing from other websites is touched. A new CACHE name drops old copies.
 // =============================================================================
-const CACHE = 'microflamma-v1'
+const CACHE = 'microflamma-v2'
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './index.html'])).then(() => self.skipWaiting()))
@@ -20,7 +20,11 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   const req = e.request
-  if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return
+  const url = new URL(req.url)
+  if (req.method !== 'GET' || url.origin !== self.location.origin) return
+  // The AI search model and runtime are cached by transformers.js itself; it
+  // checks and cancels downloads in ways a generic cache would break.
+  if (/\/(models|ort)\//.test(url.pathname)) return
   if (req.mode === 'navigate') {
     e.respondWith(fetch(req).then((res) => {
       const copy = res.clone(); caches.open(CACHE).then((c) => c.put('./index.html', copy)); return res

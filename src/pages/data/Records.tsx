@@ -175,6 +175,9 @@ export default function Records({ data, preset }: { data: Dataset; preset: strin
             </span>
           </div>
           <button onClick={() => setShowFilters((v) => !v)} className="btn lg:hidden">Filters{active ? ` (${active})` : ''}</button>
+          <button onClick={() => downloadCsv(results)} className="btn" disabled={!results.length} title="Download the rows shown, with NASA's original cells">
+            Download CSV
+          </button>
         </div>
 
         {single && (
@@ -237,6 +240,28 @@ export default function Records({ data, preset }: { data: Dataset; preset: strin
       {open && <RowDrawer t={open} data={data} onClose={() => setOpen(null)} />}
     </div>
   )
+}
+
+/** Save the filtered rows as a CSV file, built in the browser. Readable
+ *  columns first; `raw_cells` holds NASA's original row exactly as recorded. */
+function downloadCsv(rows: TestRecord[]) {
+  const cols: [string, (t: TestRecord) => unknown][] = [
+    ['psi_id', (t) => t.psi_id], ['investigation', (t) => t.acronym], ['test', (t) => t.test_number],
+    ['material', (t) => t.normalized.material], ['fuel_state', (t) => t.normalized.fuel_state],
+    ['o2_percent', (t) => t.normalized.o2_percent], ['flow_cm_s', (t) => t.normalized.flow_cm_s],
+    ['flow_direction', (t) => t.normalized.flow_direction], ['pressure_kpa', (t) => t.normalized.pressure_kpa],
+    ['ending', (t) => t.normalized.outcome], ['nasa_words', (t) => t.normalized.outcome_text],
+    ['nasa_words_source', (t) => t.normalized.outcome_source], ['data_quality_flags', (t) => t.anomalies.join('; ')],
+    ['raw_cells', (t) => JSON.stringify(t.raw)],
+  ]
+  const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
+  const csv = [cols.map((c) => c[0]).join(','), ...rows.map((t) => cols.map(([, f]) => esc(f(t))).join(','))].join('\n')
+  const url = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `microflamma-records-${rows.length}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 function Facet({ title, entries, selected, onToggle, limit = 20, render, hint }: {
@@ -307,6 +332,14 @@ function RowDrawer({ t, data, onClose }: { t: TestRecord; data: Dataset; onClose
                   <li key={a}><span className="flag">{a.replace(/_/g, ' ')}</span>
                     <p className="small text-ink2 mt-0.5">{data.findings.science_flag_descriptions[a]}</p></li>
                 ))}
+              </ul>
+            </section>
+          )}
+          {t.psi_id === 'PSI-25' && (
+            <section>
+              <h3 className="small font-semibold mb-2">Measurement limits NASA states for these instruments</h3>
+              <ul className="small text-ink2 space-y-1">
+                {data.literature.instruments_bass2.map((x) => <li key={x.quantity}><b className="text-ink font-medium">{x.quantity}:</b> {x.limit} <span className="caption">(report {x.where})</span></li>)}
               </ul>
             </section>
           )}

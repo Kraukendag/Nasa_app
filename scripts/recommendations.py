@@ -107,7 +107,7 @@ def build_recommendations(s):
                          f"Dust) in {s['daft_n']} sessions; no PSI table measures how detectors respond to dust.",
                  "psi": "PSI-47", "lit": None},
                 {"text": f"Carbon monoxide readings reached {s['co_max']:g} ppm in BASS-II test {s['co_max_test']}, "
-                         f"and the CO sensor went over its range in {s['co_over_range']} tests, so gas sensing can "
+                         f"and the CO sensor (range 0-1,000 ppm, BASS-II report p. 6) went over its range in {s['co_over_range']} tests, so gas sensing can "
                          "add a second signal.", "psi": "PSI-25", "lit": None},
             ],
             "strength": "The gap is certain; how detectors would perform is not measured in PSI.",
