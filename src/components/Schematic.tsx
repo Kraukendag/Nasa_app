@@ -130,7 +130,7 @@ export default function Schematic(p: SchematicProps) {
         {/* gravity */}
         {p.gravity === '1g'
           ? <g><Arrow x={540} y1={120} y2={200} /><text x={552} y={165} fontSize={13} fill="#16181D">g (1 g)</text></g>
-          : <text x={520} y={165} fontSize={13} fill="#646B78">0 g</text>}
+          : <text x={520} y={165} fontSize={13} fill="#646B78">microgravity</text>}
       </svg>
       <div className="px-1 pb-2 text-[13.5px] text-ink2 space-y-0.5">
         {app.map((a) => <div key={a}>{a}</div>)}

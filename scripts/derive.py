@@ -380,7 +380,7 @@ def build_negative_knowledge(all_tests, doi_of):
 
 O2_BINS = [("<16%", 0, 16), ("16-19%", 16, 19), ("19-21%", 19, 21), ("21-22.2%", 21, 22.21),
            ("22.2-30%", 22.21, 30), ("≥30%", 30, 101)]
-GRAVITY = ["0 g", "0.16 g (Moon)", "0.38 g (Mars)", "1 g"]
+GRAVITY = ["Microgravity", "0.16 g (Moon)", "0.38 g (Mars)", "1 g"]
 
 
 def build_coverage(all_tests):
@@ -397,14 +397,14 @@ def build_coverage(all_tests):
             cells = {}
             for g in GRAVITY:
                 cells[g] = (sum(1 for t in mine if t["normalized"].get("o2_percent") is not None
-                                and lo <= t["normalized"]["o2_percent"] < hi) if g == "0 g" else 0)
+                                and lo <= t["normalized"]["o2_percent"] < hi) if g == "Microgravity" else 0)
             rows[label] = cells
         # Tests whose table gives no oxygen are counted here, not shown as 0.
         # SAFFIRE-II's normal-gravity burns record no oxygen of their own, so
         # they land in this column at 1 g (no partial-gravity data exists).
         unknown = sum(1 for t in mine if t["normalized"].get("o2_percent") is None)
         one_g = sum(1 for t in mine if t["normalized"].get("has_1g_reference"))
-        rows[NR] = {g: (unknown if g == "0 g" else one_g if g == "1 g" else 0) for g in GRAVITY}
+        rows[NR] = {g: (unknown if g == "Microgravity" else one_g if g == "1 g" else 0) for g in GRAVITY}
         grid[m] = {"cells": rows, "o2_not_recorded_0g": unknown, "one_g_references": one_g}
 
     return {"o2_bins": [b[0] for b in O2_BINS] + ["O\u2082 not recorded"], "gravity": GRAVITY, "grid": grid,

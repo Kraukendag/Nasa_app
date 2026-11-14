@@ -28,18 +28,44 @@ import type { FlameSource } from '../three/volumeFlame'
 
 const HEAD_Y = 0.75          // match head centre
 const STICK_TOP = 0.66
-const BURN_LENGTH = 1.25     // how far down the stick the flame travels
-const BURN_S = 20            // seconds to travel it with gravity on
+const BURN_LENGTH = 1.85     // how far down the stick the flame travels (nearly all of it)
+const BURN_S = 30            // seconds to travel it with gravity on
 const SLOWER_IN_0G = 1.6     // without buoyancy the flame creeps more slowly
 const STRIKE_S = 0.45        // the bright flare when the head ignites
 
 type Stage = 'unlit' | 'strike' | 'burning' | 'out'
+
+/** Where a point of the stick (x, y, z in world units, y up) ends up once the
+ *  flame front at height `front` has passed it. Below the front: unchanged.
+ *  Above it, the further past the front the more it has burned:
+ *   - thinner (char shrinks to about half the wood's width),
+ *   - wrinkled (small ripples around and along it),
+ *   - a little shorter, and
+ *   - curled sideways along direction `phi`, more and more toward the tip. */
+function crumple(x: number, y: number, z: number, front: number, phi: number): [number, number, number] {
+  const d = y - front
+  if (d <= 0) return [x, y, z]
+  const u = THREE.MathUtils.smoothstep(d, 0, 0.35)
+  const ang = Math.atan2(z, x)
+  const wrinkle = 1 + 0.09 * u * Math.sin(y * 85 + ang * 3 + phi) * Math.sin(y * 23 + phi * 2)
+  const shrink = (1 - 0.36 * u) * wrinkle
+  const dd = d * (1 - 0.1 * u)                        // shortens a little as it chars
+  const bend = Math.min(0.28, 0.2 * dd * dd)          // a gentle curl, stronger toward the tip
+  const lift = dd - 0.3 * bend
+  return [x * shrink + Math.cos(phi) * bend, front + lift, z * shrink + Math.sin(phi) * bend]
+}
 const HEAD_COLOUR = new THREE.Color('#9E2B2B')
 const SPENT_COLOUR = new THREE.Color('#2A1410')
 
 function Match({ lit, gravityOn, quality }: { lit: boolean; gravityOn: boolean; quality: number }) {
-  const s = useRef({ stage: 'unlit' as Stage, t: 0, p: 0, alive: 0, flare: 0, g: gravityOn ? 1 : 0 })
+  const s = useRef({ stage: 'unlit' as Stage, t: 0, p: 0, alive: 0, flare: 0, g: gravityOn ? 1 : 0, phi: 0.6, lastFront: 99 })
   const head = useRef<THREE.MeshStandardMaterial>(null)
+  const headMesh = useRef<THREE.Mesh>(null)
+  // The charred part of the stick is a finely divided tube whose vertices are
+  // moved every time the burn advances: it thins, wrinkles, shortens a little
+  // and curls to one side, the way burnt match wood crumples.
+  const charGeo = useMemo(() => new THREE.CylinderGeometry(0.05, 0.054, 2.2, 16, 140), [])
+  const charBase = useMemo(() => Float32Array.from(charGeo.attributes.position.array as Float32Array), [charGeo])
   const ember = useRef<THREE.MeshBasicMaterial>(null)
   const emberMesh = useRef<THREE.Mesh>(null)
   const flame = useRef<FlameSource[]>([{ pos: [0, HEAD_Y, 0], radius: 0.12, stretch: 1, shell: 0, power: 0 }])
@@ -53,7 +79,7 @@ function Match({ lit, gravityOn, quality }: { lit: boolean; gravityOn: boolean; 
     m.g += ((gravityOn ? 1 : 0) - m.g) * Math.min(1, delta * 2.5)
 
     if (!lit) { m.stage = 'unlit'; m.t = 0; m.p = 0 }
-    else if (m.stage === 'unlit') { m.stage = 'strike'; m.t = 0 }
+    else if (m.stage === 'unlit') { m.stage = 'strike'; m.t = 0; m.phi = Math.random() * Math.PI * 2 }   // each match curls its own way
     if (m.stage === 'strike') { m.t += delta; if (m.t > STRIKE_S) { m.stage = 'burning'; m.t = 0 } }
     if (m.stage === 'burning') {
       m.t += delta
@@ -83,6 +109,24 @@ function Match({ lit, gravityOn, quality }: { lit: boolean; gravityOn: boolean; 
     f.shell = THREE.MathUtils.lerp(0.75, 0.1, m.g)
     f.power = m.alive * (1 + m.flare * 1.5)
 
+    // ---- Crumple the char (only when the front has moved) ----------------
+    const front = m.stage === 'unlit' ? STICK_TOP + 0.1 : y
+    const tip = crumple(0, STICK_TOP + 0.04, 0, front, m.phi)
+    if (Math.abs(front - m.lastFront) > 0.002) {
+      m.lastFront = front
+      const pos = charGeo.attributes.position as THREE.BufferAttribute
+      for (let i = 0; i < pos.count; i++) {
+        const [x, yy, z] = crumple(charBase[i * 3], charBase[i * 3 + 1] - 0.4, charBase[i * 3 + 2], front, m.phi)
+        pos.setXYZ(i, x, yy + 0.4, z)
+      }
+      pos.needsUpdate = true
+      charGeo.computeVertexNormals()
+    }
+    // The spent head rides on the curled tip and shrinks a little.
+    if (headMesh.current) {
+      headMesh.current.position.set(tip[0], tip[1] + (HEAD_Y - STICK_TOP - 0.04), tip[2])
+      headMesh.current.scale.setScalar(1 - 0.22 * THREE.MathUtils.smoothstep(STICK_TOP - front, 0, 0.35))
+    }
     if (head.current) head.current.color.lerp(lit ? SPENT_COLOUR : HEAD_COLOUR, Math.min(1, delta * 2.5))
     if (ember.current && emberMesh.current) {
       emberMesh.current.position.y = y
@@ -96,12 +140,12 @@ function Match({ lit, gravityOn, quality }: { lit: boolean; gravityOn: boolean; 
       {/* stick: unburned wood below the front, char above it */}
       <mesh position={[0, -0.4, 0]}><cylinderGeometry args={[0.055, 0.062, 2.2, 20]} />
         <meshStandardMaterial color="#D8B98A" roughness={0.85} clippingPlanes={[planes.below]} /></mesh>
-      <mesh position={[0, -0.4, 0]}><cylinderGeometry args={[0.046, 0.05, 2.2, 20]} />
+      <mesh position={[0, -0.4, 0]} geometry={charGeo}>
         <meshStandardMaterial color="#1d1712" roughness={0.95} clippingPlanes={[planes.above]} /></mesh>
       {/* the glowing ring where wood is turning to char */}
       <mesh ref={emberMesh}><cylinderGeometry args={[0.058, 0.058, 0.02, 20]} />
         <meshBasicMaterial ref={ember} color="#ff6a1a" transparent opacity={0} /></mesh>
-      <mesh position={[0, HEAD_Y, 0]}><sphereGeometry args={[0.115, 24, 20]} /><meshStandardMaterial ref={head} color="#9E2B2B" roughness={0.6} /></mesh>
+      <mesh ref={headMesh} position={[0, HEAD_Y, 0]}><sphereGeometry args={[0.115, 24, 20]} /><meshStandardMaterial ref={head} color="#9E2B2B" roughness={0.6} /></mesh>
       {/* The marching box follows the flame (and its rising plume). */}
       <VolumeFlame sources={flame} box={[1.1, 2.1, 1.1]}
                    flicker={reducedMotion ? 0 : gNow ? 1 : 0.06} sooty={gNow ? 0.95 : 0.15} dim={gNow ? 1 : 0.9}

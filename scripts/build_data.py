@@ -190,7 +190,7 @@ def main():
              "evidence": {"psi_id": "PSI-99", "tests": ["2-7"], "doi": "10.60555/2chp-m469"}},
         ],
         "gaps": [
-            "This dataset has no combustion data at any gravity between 0 g and 1 g. Partial-gravity flame "
+            "This dataset has no combustion data at any gravity between microgravity and 1 g. Partial-gravity flame "
             "tests exist from parabolic flights and LUCI, but not in PSI.",
             f"No solid fuel in the PSI tables was tested above {max_solid_o2:g}% oxygen, while a lunar habitat "
             "is planned at about 30%. Saffire V and VI (outside PSI) did fly at 26.2-31.0% O2 and 54-71 kPa; see "

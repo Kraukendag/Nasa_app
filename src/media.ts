@@ -32,6 +32,8 @@ export interface MediaItem {
   shapes?: string[]
   /** Where the item lives, when not the NASA Image and Video Library. */
   pageUrl?: string
+  /** Materials NASA's caption or file name names (empty = not stated). */
+  materials?: string[]
 }
 
 // SoFIE imagery: NASA Scientific Visualization Studio, "NASA Studies Fire in
@@ -44,7 +46,7 @@ const FLAT = ['fabric', 'sheet', 'film', 'slab', 'composite sheet']
 export const MEDIA: MediaItem[] = [
   { nasaId: 'SVS 31394 · SoFIE GEL', kind: 'image', file: 'svs31394-sofie-gel-pmma.jpg', date: '2026-05-06', psi: [], related: true, shapes: FLAT,
     pageUrl: `${SVS}#media_group_380279`, title: 'Solid Fuel Ignition and Extinction (SoFIE) Growth and Extinction Limits (GEL)',
-    caption: 'This image is from the Solid Fuel Ignition and Extinction (SoFIE) Growth and Extinction Limits (GEL) experiment aboard the space station. (NASA’s file name: opposed flow, air, 0.5 mm PMMA.)' },
+    caption: 'This image is from the Solid Fuel Ignition and Extinction (SoFIE) Growth and Extinction Limits (GEL) experiment aboard the space station. (NASA’s file name: opposed flow, air, 0.5 mm PMMA.)', materials: ['PMMA'] },
   { nasaId: 'SVS 31394 · SoFIE fabric', kind: 'image', file: 'svs31394-sofie-fabric-0.2s.jpg', date: '2026-05-06', psi: [], related: true, shapes: FLAT,
     pageUrl: `${SVS}#media_group_380278`, title: 'SoFIE: thin fabric sheet in a quiescent chamber',
     caption: 'A thin fabric sheet burning in a quiescent chamber in microgravity. The burning sample generates its own flow as fuel is vaporized, drawing fresh oxygen into the flame; the flame brightens periodically as oxygen is drawn in. Images are 0.2 s apart.' },
@@ -73,10 +75,10 @@ export const MEDIA: MediaItem[] = [
     title: 'Candle Flames in Microgravity Experiment',
     caption: 'Close-up view inside the glovebox showing a candle flame, Space Shuttle Columbia (STS-50). A separate experiment, not a PSI table: shown for the candle samples.' },
   { nasaId: 'GRC-2021-CN-00008', kind: 'video', date: '2021-01-12', psi: ['PSI-98', 'PSI-99', 'PSI-100'], related: true,
-    title: 'Saffire-V Experiment, January 2021',
+    title: 'Saffire-V Experiment, January 2021', materials: ['PMMA'],
     caption: 'A ribbed PMMA (Plexiglas) sample burning in Saffire-V inside a Cygnus spacecraft. Saffire-V is a later flight of the series whose first three flights are PSI-98 to PSI-100.' },
   { nasaId: 'Saf-VI S8C3+C4 1-sided PMMA_unmapped_jpeg-20x no text', kind: 'video', date: '2024-01-09', psi: ['PSI-98', 'PSI-99', 'PSI-100'], related: true,
-    title: 'Saffire-VI inside Northrop Grumman’s Cygnus spacecraft',
+    title: 'Saffire-VI inside Northrop Grumman’s Cygnus spacecraft', materials: ['PMMA'],
     caption: 'NASA ignited the final set of Saffire-VI fires inside Cygnus at the end of the NG-19 resupply mission. NASA’s file name identifies the sample as one-sided PMMA.' },
   { nasaId: 'jsc2021m000185_Cool_Flames_Created_Aboard_International_Space_Station', kind: 'video', date: '2021-07-14', psi: ['PSI-159'],
     title: 'Hot Flame Aboard the International Space Station',
@@ -85,11 +87,15 @@ export const MEDIA: MediaItem[] = [
 
 export const mediaUrl = (m: MediaItem) => m.pageUrl ?? `https://images.nasa.gov/details/${encodeURIComponent(m.nasaId)}`
 
-/** Imagery for the investigations behind the current Lab selection. */
-export function mediaFor(psi: string[], shape: string): MediaItem[] {
-  // Imagery of the PSI investigations themselves first, related experiments after.
-  return MEDIA.filter((m) => m.psi.some((p) => psi.includes(p))
-    || (shape === 'candle' && m.nasaId === 'sts050-232-011')
-    || (m.shapes?.includes(shape) ?? false))
-    .sort((a, b) => Number(!!a.related && !a.psi.some((p) => psi.includes(p))) - Number(!!b.related && !b.psi.some((p) => psi.includes(p))))
+/** Imagery related to the chosen material: NASA names the material, or the
+ *  imagery is from one of the matching investigations and NASA names none.
+ *  Related experiments (SoFIE, candle) only when NASA names the material or
+ *  it is the candle shape. */
+export function mediaFor(psi: string[], shape: string, material?: string): MediaItem[] {
+  return MEDIA.filter((m) => {
+    if (m.materials?.length) return !!material && m.materials.includes(material)
+    if (m.nasaId === 'sts050-232-011') return shape === 'candle'
+    if (m.related && !m.psi.some((p) => psi.includes(p))) return false
+    return m.psi.some((p) => psi.includes(p))
+  })
 }

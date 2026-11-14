@@ -63,7 +63,7 @@ export function keyMeasures(t: TestRecord): string {
       break
     case 'PSI-98': case 'PSI-99': case 'PSI-100':
       bits.push(n.flow_direction, n.burn_time_s != null ? `${n.burn_time_s} s` : null,
-        n.burn_length_0g_raw ? `0 g: ${n.burn_length_0g_raw}` : null,
+        n.burn_length_0g_raw ? `microgravity: ${n.burn_length_0g_raw}` : null,
         n.burn_length_1g_raw ? `1 g: ${n.burn_length_1g_raw}` : null)
       break
     case 'PSI-25':

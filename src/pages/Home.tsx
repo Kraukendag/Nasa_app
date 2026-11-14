@@ -72,7 +72,7 @@ export default function Home({ data }: { data: Dataset }) {
               </button>
               <div className="flex rounded-md overflow-hidden border border-white/20 text-sm">
                 <button onClick={() => setGravityOn(true)} className={`px-3 py-2 ${gravityOn ? 'bg-white text-ink' : 'text-slate-200 hover:bg-white/10'}`}>Gravity on (1 g)</button>
-                <button onClick={() => setGravityOn(false)} className={`px-3 py-2 ${!gravityOn ? 'bg-white text-ink' : 'text-slate-200 hover:bg-white/10'}`}>Gravity off (0 g)</button>
+                <button onClick={() => setGravityOn(false)} className={`px-3 py-2 ${!gravityOn ? 'bg-white text-ink' : 'text-slate-200 hover:bg-white/10'}`}>Microgravity</button>
               </div>
             </div>
           </div>

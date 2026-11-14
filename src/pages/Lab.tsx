@@ -275,18 +275,11 @@ export default function Lab({ data, arg = null }: { data: Dataset; arg?: string 
   }
   const regime: Regime = decideRegime({ ...regimeInput, gravity: partialG ? 'none' : gravity === '1g' ? '1g' : '0g', ending })
   // The normal-gravity twin for the side-by-side view (SAFFIRE-II recorded both).
-  const outcomes1g = useMemo(() => summariseOutcomes(result, '1g'), [result])
-  const ending1g: Ending = outcomes1g.outcomes[0] ? (ENDING[outcomes1g.outcomes[0].cls] ?? 'full') : 'full'
-  const regime1g: Regime = decideRegime({ ...regimeInput, gravity: '1g', ending: ending1g, topClass: outcomes1g.outcomes[0]?.cls ?? null })
-  const [split, setSplit] = useState(false)
-  const [photo, setPhoto] = useState(false)
-  useEffect(() => { if (!has1g) setSplit(false) }, [has1g])
   const tl = useRef<Timeline>({ t: 0, playing: false, duration: 1, reignite: null, phase: 'Ready' })
-  const tl1 = useRef<Timeline>({ t: 0, playing: false, duration: 1, reignite: null, phase: 'Ready' })
-  const runKey = [shape, regime.behaviour, ending, gravity, flowShown, direction, chosen, split].join('|')
+  const runKey = [shape, regime.behaviour, ending, gravity, flowShown, direction, chosen].join('|')
   // New conditions start a new run (instead of jumping mid-burn).
-  useEffect(() => { for (const r of [tl, tl1]) { r.current.t = 0; r.current.reignite = null; r.current.playing = lit } }, [runKey]) // eslint-disable-line react-hooks/exhaustive-deps
-  const photoItem = mediaFor(psiShown, shape).find((m) => m.kind === 'image')
+  // New conditions: stop and wait for Ignite (runs only start by hand).
+  useEffect(() => { tl.current.t = 0; tl.current.reignite = null; tl.current.playing = false; setLit(false) }, [runKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ------------------------------------------------------------------------
   return (
@@ -379,38 +372,23 @@ export default function Lab({ data, arg = null }: { data: Dataset; arg?: string 
               <PartialGravity gravity={gravity} />
             ) : (
               <Suspense fallback={<div className="h-full grid place-items-center text-slate-400 small">Loading 3D view…</div>}>
-                <div className={`h-full ${split ? 'grid grid-cols-2 divide-x divide-white/10' : ''}`}>
-                  {(split ? ['0g', '1g'] as const : [gravity === '1g' ? '1g' as const : '0g' as const]).map((g) => (
-                    <div key={g} className="relative h-full">
-                      <Specimen shape={shape} dims={sampleDims} lit={lit && !neverLit} gravity={g}
-                                regime={g === '1g' && split ? regime1g : regime} timeline={g === '1g' && split ? tl1 : tl}
-                                runKey={runKey} tag={split ? (g === '1g' ? '1 g' : '0 g') : undefined} o2={o2Shown}
-                                flowCmS={state === 'solid' ? flowShown : null} direction={state === 'solid' ? direction : null}
-                                fuel={chosen} droplet={state === 'liquid' ? { d0: d0 ?? 2.5, dExt, burnTime: burnT } : null}
-                                fiber={fiberAll} burner={burner} burnerSizeMm={burnerMm} />
-                    </div>
-                  ))}
-                </div>
+                <Specimen shape={shape} dims={sampleDims} lit={lit && !neverLit} gravity={gravity === '1g' ? '1g' : '0g'}
+                          regime={regime} timeline={tl} runKey={runKey} o2={o2Shown}
+                          flowCmS={state === 'solid' ? flowShown : null} direction={state === 'solid' ? direction : null}
+                          fuel={chosen} droplet={state === 'liquid' ? { d0: d0 ?? 2.5, dExt, burnTime: burnT } : null}
+                          fiber={fiberAll} burner={burner} burnerSizeMm={burnerMm} />
               </Suspense>
             )}
             {!partialG && (
               <RunControls lit={lit} neverLit={neverLit} canStart={result.length > 0} state={state}
-                           timelines={split ? [tl, tl1] : [tl]} regime={regime}
-                           onIgnite={() => { setLit(true); for (const r of [tl, tl1]) { r.current.t = 0; r.current.reignite = null; r.current.playing = true } }}
+                           timeline={tl} regime={regime}
+                           onIgnite={() => { setLit(true); tl.current.t = 0; tl.current.reignite = null; tl.current.playing = true }}
                            onReset={() => setLit(false)}
-                           has1g={has1g} split={split} setSplit={setSplit}
-                           hasPhoto={!!photoItem} photo={photo} setPhoto={setPhoto} />
+                           endNote={top ? `It stopped here on purpose: the most common ending among the matching NASA tests is “${top.label}” (${top.count} of ${outcomes.withOutcome}${top.count * 2 > outcomes.withOutcome ? ', a majority' : ''}), so the flame does not burn the whole sample.` : 'It stopped here: the matching tests record no ending, so this part is illustration.'} />
             )}
             {!partialG && lit && neverLit && (
               <div className="absolute top-3 left-3 max-w-xs rounded bg-black/60 px-3 py-2 small text-slate-100 enter">
                 None of the matching tests established a flame, so none is drawn.
-              </div>
-            )}
-            {photo && photoItem && !partialG && (
-              <div className="absolute top-3 right-3 w-[46%] max-w-[340px] rounded-md overflow-hidden bg-black/80 border border-white/15 enter">
-                <img src={`${import.meta.env.BASE_URL}media/${photoItem.file}`} alt={`${photoItem.title}: ${photoItem.caption}`} className="w-full aspect-[3/2] object-contain bg-black" />
-                <p className="px-2.5 py-1.5 text-[12px] leading-snug text-slate-200">Real NASA photo · {photoItem.nasaId}{photoItem.related ? ' · related experiment' : ''}
-                  {' '}· <a href={mediaUrl(photoItem)} target="_blank" rel="noreferrer" className="text-sky-300">source</a></p>
               </div>
             )}
           </div>
@@ -448,11 +426,8 @@ export default function Lab({ data, arg = null }: { data: Dataset; arg?: string 
                 </li>
               ))}
             </ul>
-            {split && <p className="caption mt-3">Right panel (1 g): {regime1g.label.toLowerCase()}; ending from SAFFIRE-II's 1 g burn-length column.</p>}
           </section>
         )}
-
-        <RealImagery psi={psiShown} shape={shape} />
 
         <figure className="figure">
           <div className="p-3 sm:p-4 overflow-x-auto">
@@ -462,7 +437,7 @@ export default function Lab({ data, arg = null }: { data: Dataset; arg?: string 
                        burnerMm={burnerMm} fiber={fiberAll} />
           </div>
           <figcaption className="figcap">
-            <b>Fig. 3.</b> Side view of the set-up with the recorded dimensions (most common value among the matching tests). A dimension
+            <b>Fig. 2.</b> Side view of the set-up with the recorded dimensions (most common value among the matching tests). A dimension
             that is not recorded is labelled so, never drawn to a guessed size.
             <span className="text-mute"> Source: investigation hardware descriptions on NASA PSI; dimensions from the test tables.</span>
           </figcaption>
@@ -476,12 +451,13 @@ export default function Lab({ data, arg = null }: { data: Dataset; arg?: string 
                                selectedFlow={sel.flow != null ? Number(sel.flow) : null} />
             </div>
             <figcaption className="figcap">
-              <b>Fig. 4.</b> Every recorded {chosen} test by oxygen and airflow, marked by how it ended. Tests matching your
+              <b>Fig. 3.</b> Every recorded {chosen} test by oxygen and airflow, marked by how it ended. Tests matching your
               choices are drawn solid. No boundary is fitted: the points are the evidence.
               <span className="text-mute"> Source: PSI-25 BASS-II (NASA/TM-20210011385 App. A), PSI-98, PSI-99.</span>
             </figcaption>
           </figure>
         )}
+        <RealImagery psi={psiShown} shape={shape} material={chosen} />
       </section>
 
       {/* ============================ RIGHT ============================ */}
@@ -559,7 +535,7 @@ export default function Lab({ data, arg = null }: { data: Dataset; arg?: string 
         {result.some((t) => t.normalized.has_1g_reference) && (
           <Block title="Same sample, both gravities">
             <table className="tbl !text-[13px]">
-              <thead><tr><th>Sample</th><th>0 g burn</th><th>1 g burn</th></tr></thead>
+              <thead><tr><th>Sample</th><th>Microgravity burn</th><th>1 g burn</th></tr></thead>
               <tbody>
                 {result.filter((t) => t.normalized.has_1g_reference).map((t) => (
                   <tr key={t.id}><td className="num">{t.test_number}</td>
@@ -711,7 +687,7 @@ function StepControl({ label, options, value, onChange }: {
  *  you can SEE that PSI has nothing there, and what other sources say. */
 function GravityTrack({ gravity, setGravity, has1g }: { gravity: Gravity; setGravity: (g: Gravity) => void; has1g: boolean }) {
   const stops: { g: Gravity; label: string; pos: number; disabled?: boolean }[] = [
-    { g: '0g', label: '0 g', pos: 0 },
+    { g: '0g', label: 'Micro-gravity', pos: 0 },
     { g: 'moon', label: 'Moon 0.16 g', pos: 16 },
     { g: 'mars', label: 'Mars 0.38 g', pos: 38 },
     { g: '1g', label: '1 g', pos: 100, disabled: !has1g },
@@ -795,8 +771,11 @@ function PartialGravityResults({ data, material }: { data: Dataset; material: st
 }
 
 /** Real photographs and videos of these flames, beside the illustration. */
-function RealImagery({ psi, shape }: { psi: string[]; shape: string }) {
-  const items = mediaFor(psi, shape)
+function RealImagery({ psi, shape, material }: { psi: string[]; shape: string; material: string | undefined }) {
+  // Only imagery tied to this material: NASA names it, or it is from the same
+  // experiment (labelled when NASA does not name the material).
+  const items = mediaFor(psi, shape, material)
+  if (!items.length) return null
   const photos = items.filter((m) => m.kind === 'image')
   const videos = items.filter((m) => m.kind === 'video')
   return (
@@ -830,67 +809,64 @@ function RealImagery({ psi, shape }: { psi: string[]; shape: string }) {
           )}
         </div>
       ) : (
-        <p className="p-4 small text-ink2">No photograph or video naming this experiment was found in the NASA Image and Video Library, so none is shown.</p>
+        <p className="p-4 small text-ink2">No NASA photo or video of this material was found.</p>
       )}
       <figcaption className="figcap">
-        <b>Fig. 2.</b> The real flames, for comparison with the illustration above. Click any image for NASA's full description.
+        <b>Fig. 4.</b> Real NASA imagery related to {material}. Click any image for NASA's full description.
         <span className="text-mute"> Source: NASA Image and Video Library (images.nasa.gov) and NASA Scientific Visualization Studio (svs.gsfc.nasa.gov/31394); IDs as shown. Items marked “related experiment” are other NASA investigations (SoFIE, Candle Flames in Microgravity), not PSI tables.</span>
       </figcaption>
     </figure>
   )
 }
 
-/** Play / pause / scrub the run, plus the extra actions NASA's evidence allows. */
-function RunControls({ lit, neverLit, canStart, state, timelines, regime, onIgnite, onReset, has1g, split, setSplit, hasPhoto, photo, setPhoto }: {
-  lit: boolean; neverLit: boolean; canStart: boolean; state: State; timelines: React.MutableRefObject<Timeline>[]; regime: Regime
-  onIgnite: () => void; onReset: () => void; has1g: boolean; split: boolean; setSplit: (v: boolean) => void
-  hasPhoto: boolean; photo: boolean; setPhoto: (v: boolean) => void
+/** Start and restart the run by hand (it is short, so no skipping), plus the
+ *  one extra action NASA's evidence allows (airflow back up for flamelets). */
+function RunControls({ lit, neverLit, canStart, state, timeline, regime, onIgnite, onReset, endNote }: {
+  lit: boolean; neverLit: boolean; canStart: boolean; state: State; timeline: React.MutableRefObject<Timeline>; regime: Regime
+  onIgnite: () => void; onReset: () => void; endNote: string
 }) {
   // The 3D scene owns the clock; poll it ten times a second for the UI.
-  const [view, setView] = useState({ t: 0, d: 1, playing: false, phase: 'Ready', re: false })
+  const [view, setView] = useState({ t: 0, d: 1, phase: 'Ready', re: false })
   useEffect(() => {
     const id = window.setInterval(() => {
-      const c = timelines[0].current
-      setView({ t: c.t, d: c.duration, playing: c.playing, phase: c.phase, re: c.reignite != null })
+      const c = timeline.current
+      setView({ t: c.t, d: c.duration, phase: c.phase, re: c.reignite != null })
     }, 100)
     return () => window.clearInterval(id)
-  }, [timelines])
-  const set = (fn: (c: Timeline) => void) => timelines.forEach((r) => fn(r.current))
-  const done = view.t >= view.d - 0.01
-  const spreading = view.phase === 'Flamelets spreading'
+  }, [timeline])
+  const done = lit && view.t >= view.d - 0.01
+  const wentOut = done && regime.ending !== 'full'
   return (
     <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/70 to-transparent">
       {lit && !neverLit && (
-        <div className="flex items-center gap-3 mb-2">
-          <button className="text-white text-[13px] px-2 py-1 rounded border border-white/25 hover:bg-white/10 w-16"
-                  onClick={() => set((c) => { if (done) { c.t = 0; c.reignite = null } c.playing = !c.playing || done })}>
-            {done ? 'Replay' : view.playing ? 'Pause' : 'Play'}
-          </button>
-          <input type="range" min={0} max={1000} value={Math.round((view.t / view.d) * 1000)} aria-label="Scrub through the burn"
-                 onChange={(e) => set((c) => { c.t = (Number(e.target.value) / 1000) * c.duration; c.playing = false })} className="flex-1" />
-          <span className="text-slate-200 text-[12.5px] w-40 text-right truncate">{view.phase}</span>
+        <div className="flex items-center gap-3 mb-2" aria-live="polite">
+          {/* Progress only: not draggable. */}
+          <div className="flex-1 h-1 rounded-full bg-white/20 overflow-hidden"><div className="h-full bg-white/80" style={{ width: `${Math.min(100, (view.t / view.d) * 100)}%` }} /></div>
+          <span className="text-slate-200 text-[12.5px] w-44 text-right truncate">{view.phase}</span>
         </div>
       )}
+      {wentOut && (
+        <p className="mb-2 text-[12.5px] text-slate-100 bg-black/50 rounded px-2 py-1 inline-block">
+          {endNote}
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-2">
-        <button onClick={lit ? onReset : onIgnite} disabled={!canStart}
-                className="px-4 py-2 rounded-md small font-medium bg-white text-ink hover:bg-slate-100 disabled:opacity-40">
-          {lit ? 'Reset' : neverLit ? 'Try to ignite' : state === 'solid' ? 'Ignite at the top' : 'Ignite'}
-        </button>
+        {!lit ? (
+          <button onClick={onIgnite} disabled={!canStart}
+                  className="px-4 py-2 rounded-md small font-medium bg-white text-ink hover:bg-slate-100 disabled:opacity-40">
+            {neverLit ? 'Try to ignite' : state === 'solid' ? 'Ignite at the top' : 'Ignite'}
+          </button>
+        ) : (
+          <>
+            <button onClick={onIgnite} className="px-4 py-2 rounded-md small font-medium bg-white text-ink hover:bg-slate-100">Restart</button>
+            <button onClick={onReset} className="px-3 py-2 rounded-md text-[13px] text-white border border-white/30 hover:bg-white/10">Stop</button>
+          </>
+        )}
         {lit && regime.canReignite && (
-          <button disabled={!spreading || view.re} onClick={() => set((c) => { c.reignite = c.t })}
+          <button disabled={view.phase !== 'Flamelets spreading' || view.re} onClick={() => { timeline.current.reignite = timeline.current.t }}
                   className="px-3 py-2 rounded-md text-[13px] text-white border border-white/30 hover:bg-white/10 disabled:opacity-40"
                   title="NASA Glenn: when the airflow is increased, flamelets flare up and re-form a full flame front">
             {view.re ? 'Airflow turned up' : 'Turn the airflow back up'}
-          </button>
-        )}
-        {has1g && (
-          <button onClick={() => setSplit(!split)} className={`px-3 py-2 rounded-md text-[13px] border ${split ? 'bg-white text-ink border-white' : 'text-white border-white/30 hover:bg-white/10'}`}>
-            0 g | 1 g side by side
-          </button>
-        )}
-        {hasPhoto && (
-          <button onClick={() => setPhoto(!photo)} className={`px-3 py-2 rounded-md text-[13px] border ${photo ? 'bg-white text-ink border-white' : 'text-white border-white/30 hover:bg-white/10'}`}>
-            Compare with a real NASA photo
           </button>
         )}
         <span className="hud text-slate-300 hidden md:inline ml-auto">drag to orbit · scroll to zoom</span>

@@ -41,7 +41,7 @@ export default function Materials({ data, onShowRows }: { data: Dataset; onShowR
           </button>
         ))}
         <span className="w-px h-5 bg-rule mx-1" />
-        {([['all', 'All'], ['outcomes', 'Has recorded outcomes'], ['gravity', 'Tested in both 0 g and 1 g']] as const).map(([k, l]) => (
+        {([['all', 'All'], ['outcomes', 'Has recorded outcomes'], ['gravity', 'Tested in microgravity and 1 g']] as const).map(([k, l]) => (
           <button key={k} onClick={() => setOnly(k)} className={`chip ${only === k ? 'chip-on' : ''}`}>{l}</button>
         ))}
         <select value={sort} onChange={(e) => setSort(e.target.value as 'tests' | 'name')} className="field !w-auto !py-1 ml-auto" aria-label="Sort">
@@ -54,7 +54,7 @@ export default function Materials({ data, onShowRows }: { data: Dataset; onShowR
           <b className="text-ink">Why microgravity results matter for material screening.</b> Spacecraft materials are approved
           with NASA-STD-6001 Test 1: a sample burned upward in normal gravity. BASS-II set out to “bridge the gap between the
           normal gravity NASA-STD-6001 Test #1 method, ground-based microgravity tests, and actual material flammability in
-          microgravity” (PSI-25 record). The oxygen limits and 0 g vs 1 g rows on these cards show where that gap is visible.
+          microgravity” (PSI-25 record). The oxygen limits and microgravity vs 1 g rows on these cards show where that gap is visible.
         </p>
       )}
 
@@ -135,7 +135,7 @@ function Card({ m, data, onShowRows }: { m: MaterialCard; data: Dataset; onShowR
         <div className="wash p-3">
           <h4 className="caption font-medium text-ink2 mb-1">Earth (1 g) vs microgravity, same sample</h4>
           {m.gravity_comparisons.map((g) => (
-            <div key={g.test} className="small flex gap-2"><span className="num w-9 shrink-0">{g.test}</span><span>0 g: {g.burn_length_0g} · 1 g: {g.burn_length_1g}</span></div>
+            <div key={g.test} className="small flex gap-2"><span className="num w-9 shrink-0">{g.test}</span><span>microgravity: {g.burn_length_0g} · 1 g: {g.burn_length_1g}</span></div>
           ))}
           <div className="caption mt-1">PSI-99 SAFFIRE-II</div>
         </div>

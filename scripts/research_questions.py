@@ -23,12 +23,12 @@ def build_research_questions(s):
 
     # ---------------------------------------------------------------- GRAVITY
     G = "Partial gravity"
-    q(G, "Does the minimum oxygen concentration that supports flame spread fall below both its 0 g and 1 g values at lunar gravity?",
+    q(G, "Does the minimum oxygen concentration that supports flame spread fall below both its microgravity and 1 g values at lunar gravity?",
       "Lunar habitats will be screened with 1 g tests. If lunar gravity is the most flammable condition, 1 g screening is not conservative.",
-      "LPSC 2026 cites evidence that the limiting oxygen concentration reaches a minimum near lunar gravity. PSI contains no test between 0 g and 1 g.",
+      "LPSC 2026 cites evidence that the limiting oxygen concentration reaches a minimum near lunar gravity. PSI contains no test between microgravity and 1 g.",
       "No long-duration measurement of the oxygen limit at 0.16 g for any material.",
       "FM2 (planned late 2026, four samples in real lunar gravity); repeat spinning-rocket flights.",
-      "Extinction oxygen concentration for SIBAL and PMMA at 0.16 g, with the same samples tested at 0 g and 1 g.",
+      "Extinction oxygen concentration for SIBAL and PMMA at 0.16 g, with the same samples tested in microgravity and at 1 g.",
       ["LPSC2026"], "high")
     q(G, "Why did SIBAL spread more slowly at lunar gravity than at 1 g in LUCI, yet keep burning about 45 seconds longer?",
       "Slower spread but longer burning could mean a longer window for a fire to reach other materials.",
@@ -37,16 +37,16 @@ def build_research_questions(s):
       "Further New Shepard flights; FM2.",
       "Spread rate, flame length and local oxygen over the whole burn, repeated on several samples.",
       ["LUCI", "LPSC2026"], "high")
-    q(G, "At lunar gravity, does a flame spread faster against the airflow or with it, as it does in 0 g?",
+    q(G, "At lunar gravity, does a flame spread faster against the airflow or with it, as it does in microgravity?",
       "Habitats have ventilation and gravity at once. Which spread direction dominates decides where detectors and fuel-free zones belong.",
-      "Olson (2004) reports that 0 g flames preferentially spread upwind. Partial-gravity experiments so far studied buoyancy-driven spread (Feier 2001, upward; LPSC 2026 cites downward), not forced flow plus partial gravity.",
+      "Olson (2004) reports that microgravity flames preferentially spread upwind. Partial-gravity experiments so far studied buoyancy-driven spread (Feier 2001, upward; LPSC 2026 cites downward), not forced flow plus partial gravity.",
       "No measurement combining forced ventilation with partial gravity.",
       "A ventilated flow duct on a lunar lander or a long-arm centrifuge.",
       "Concurrent and opposed spread rates at 0.16 g for 0-20 cm/s forced flow.",
       ["OLSON2004", "FEIER2001"], "high")
     q(G, "At what gravity level does buoyancy alone supply enough oxygen to keep a flame alive without ventilation?",
       "If ventilation fails in a lunar habitat, will an existing fire starve or keep going?",
-      f"In 0 g, {s['flow_stopped']} BASS-II flames went out when the crew stopped the airflow. In 1 g buoyancy always feeds the flame.",
+      f"In microgravity, {s['flow_stopped']} BASS-II flames went out when the crew stopped the airflow. In 1 g buoyancy always feeds the flame.",
       "The gravity level where quiescent burning becomes self-sustaining is unknown.",
       "FM2 burns samples in quiescent air at lunar gravity.",
       "Whether a flame survives in still air, and for how long, at 0.16 g and 0.38 g.",
@@ -74,8 +74,8 @@ def build_research_questions(s):
       ["PSI-25", "OLSON2004", "LPSC2026"], "high")
     q(G, "Do droplet extinction and cool flames behave differently at partial gravity?",
       "Liquid spills (fuels, solvents, lubricants) are a habitat hazard alongside solids.",
-      f"FLEX ({s['flex_n']} droplet tests) and CFI-G ({s['cfig_n']} gas tests) are all 0 g.",
-      "No droplet or cool-flame measurement between 0 g and 1 g.",
+      f"FLEX ({s['flex_n']} droplet tests) and CFI-G ({s['cfig_n']} gas tests) are all microgravity tests.",
+      "No droplet or cool-flame measurement between microgravity and 1 g.",
       "A droplet module on a partial-gravity platform.",
       "Extinction diameter and burn time of methanol and heptane droplets at 0.16 g.",
       ["PSI-69", "PSI-159"])

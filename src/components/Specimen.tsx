@@ -172,7 +172,7 @@ function simulateFlamelets(W: number, H: number, travel: number, seed: number): 
   const breakP = 0.12
   const n0 = THREE.MathUtils.clamp(Math.round(W / 0.12), 3, 10)
   const minSep = W / (n0 * 1.6)
-  const speed = H / SPREAD_S * 0.85
+  const speed = H / SPREAD_S          // flamelets reach the end of the sample in the time shown
   let id = 0
   let live: Flamelet[] = Array.from({ length: n0 }, (_, i) => ({ id: id++, x: -W / 2 + (W * (i + 0.5)) / n0 + (r() - 0.5) * minSep * 0.4, y: 0 }))
   const steps: Flamelet[][] = []

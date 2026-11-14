@@ -65,7 +65,7 @@ def build_recommendations(s):
                  "psi": None, "lit": "LUCI"},
                 {"text": "Related work suggests the oxygen concentration needed for flammability reaches a minimum "
                          "near lunar gravity.", "psi": None, "lit": "LPSC2026"},
-                {"text": "PSI contains no test between 0 g and 1 g.", "psi": None, "lit": None},
+                {"text": "PSI contains no test between microgravity and 1 g.", "psi": None, "lit": None},
             ],
             "strength": "Early: one sounding-rocket flight with two samples, plus a hypothesis that FM2 (late "
                         "2026) is designed to test.",
