@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "data": "python3 scripts/build_data.py"
+    "data": "python3 scripts/build_data.py",
+    "test": "python3 scripts/test_pipeline.py"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "5.3.0",

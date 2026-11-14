@@ -17,6 +17,7 @@ import { Page } from '../ui'
 
 export default function Questions({ data }: { data: Dataset }) {
   const all = data.findings.research_questions
+  const picks = data.findings.team_picks.map((id) => all.find((x) => x.id === id)).filter((x): x is ResearchQuestion => !!x)
   const [theme, setTheme] = useState<string>('all')
   const [high, setHigh] = useState(false)
   const [q, setQ] = useState('')
@@ -50,6 +51,23 @@ export default function Questions({ data }: { data: Dataset }) {
       taken. Together they are a map of what is still to be discovered.
     </>}>
       <div className="space-y-8">
+        <section className="card p-6">
+          <h2 className="h2">Team picks: the ten that matter most</h2>
+          <p className="small text-ink2 mt-2 max-w-3xl">The questions this team would fund first for a lunar habitat. The full list of {all.length} follows.</p>
+          <ol className="mt-4 space-y-2.5">
+            {picks.map((x, i) => (
+              <li key={x.id} className="grid grid-cols-[28px_1fr] gap-2">
+                <span className="num text-accent">{i + 1}</span>
+                <button onClick={() => { setTheme('all'); setHigh(false); setQ(''); setOpen(new Set([x.id]));
+                                         setTimeout(() => document.getElementById(`q-${x.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50) }}
+                        className="text-left hover:text-accent">
+                  <span className="font-medium">{x.question}</span> <span className="caption num">{x.id} · {x.theme}</span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        </section>
+
         <div className="card p-5 space-y-4">
           <div className="flex flex-wrap gap-1.5">
             <button onClick={() => setTheme('all')} className={`chip ${theme === 'all' ? 'chip-on' : ''}`}>All themes <span className="num text-[12px] text-mute">{all.length}</span></button>
@@ -80,7 +98,7 @@ export default function Questions({ data }: { data: Dataset }) {
               {list.map((x) => {
                 const isOpen = open.has(x.id)
                 return (
-                  <li key={x.id}>
+                  <li key={x.id} id={`q-${x.id}`} className="scroll-mt-24">
                     <button onClick={() => toggle(x.id)} aria-expanded={isOpen}
                             className="w-full text-left py-4 grid grid-cols-[48px_1fr_auto] gap-3 items-baseline hover:bg-wash/60 px-1">
                       <span className="num caption">{x.id}</span>

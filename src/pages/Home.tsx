@@ -13,6 +13,7 @@ import { LitCite, PsiCite, Stat } from '../ui'
 const MatchScene = lazy(() => import('../components/MatchScene'))
 
 const SITE = [
+  ['#/habitat', 'Lunar habitat', 'Five evidence-backed recommendations for a habitat at 30% oxygen and one-sixth gravity.'],
   ['#/lab', 'Experiment Lab', 'Pick a material and the conditions NASA recorded; watch it burn and see how the real tests ended.'],
   ['#/data', 'Data', 'All 1,450 records, profiles of the 14 investigations, and a card for every material tested.'],
   ['#/findings', 'Findings', 'What the data shows, what failed, what surprised, and verified results from beyond PSI.'],
@@ -25,6 +26,8 @@ export default function Home({ data }: { data: Dataset }) {
   const [lit, setLit] = useState(false)
   const [gravityOn, setGravityOn] = useState(true)
   const withOutcome = data.tests.filter((t) => t.normalized.outcome_class).length
+  const extracted = data.tests.filter((t) => t.psi_id === 'PSI-25' && (t.normalized.outcome_source ?? '').startsWith('NASA/TM')).length
+  const pmma = data.materials.find((m) => m.id === 'PMMA|solid')?.lowest_sustained_o2
 
   return (
     <div className="enter">
@@ -32,15 +35,21 @@ export default function Home({ data }: { data: Dataset }) {
       <section className="max-w-[1400px] mx-auto px-5 sm:px-8 pt-10 sm:pt-14 pb-12 grid lg:grid-cols-[1fr_1.1fr] gap-10 items-center">
         <div>
           <p className="eyebrow">NASA Space Apps Challenge 2026 · Flame in Freefall</p>
-          <h1 className="h1 mt-3">How fire behaves when nothing falls</h1>
+          <h1 className="h1 mt-3">Earth's fire test can misjudge a material in space, in both directions</h1>
           <p className="lede mt-5 max-w-xl">
-            On Earth, hot gas rises and pulls fresh air in behind it, which is what gives a flame its shape. In orbit
-            nothing rises. Micro Flamma organises NASA's microgravity combustion experiments so you can see what was
-            measured, what it means for spacecraft and lunar habitats, and what is still unknown.
+            Spacecraft materials are approved by burning them in normal gravity. In NASA's orbital experiments, PMMA kept
+            burning at {pmma ? `${pmma.o2}%` : 'low'} oxygen, and NASA analysis reports flames surviving below the Earth
+            oxygen limit in spacecraft-like airflow. Silicone went the other way: it burned on Earth but barely in space.
+            Without gravity, hot gas does not rise, and flames behave differently.
+          </p>
+          <p className="text-ink2 mt-4 max-w-xl">
+            Micro Flamma brings together {data.tests.length.toLocaleString()} NASA records, including {extracted} test endings
+            that AI helped extract from a NASA report, to show what was measured, what it means for a lunar habitat, and
+            what is still unknown.
           </p>
           <div className="flex flex-wrap gap-3 mt-7">
-            <a href="#/lab" className="btn btn-primary no-underline hover:no-underline">Open the Experiment Lab</a>
-            <a href="#/findings" className="btn no-underline hover:no-underline">Read the findings</a>
+            <a href="#/habitat" className="btn btn-primary no-underline hover:no-underline">What it means for a lunar habitat</a>
+            <a href="#/lab" className="btn no-underline hover:no-underline">Open the Experiment Lab</a>
           </div>
         </div>
 
@@ -107,7 +116,7 @@ export default function Home({ data }: { data: Dataset }) {
         <div className="card p-6 grid grid-cols-2 md:grid-cols-5 gap-6">
           <Stat value={data.tests.length.toLocaleString()} label="records from 14 PSI tables" />
           <Stat value={withOutcome} label="tests with a recorded ending" />
-          <Stat value="126" label="endings extracted from NASA's BASS-II report" />
+          <Stat value={extracted} label="endings extracted from NASA's BASS-II report" />
           <Stat value={data.literature.saffire_iv_vi.length + data.literature.points.length} label="verified results from beyond PSI" />
           <Stat value={data.findings.research_questions.length} label="open research questions" />
         </div>

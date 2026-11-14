@@ -50,16 +50,32 @@ npm run data
 `npm run data` rebuilds the JSON from the CSVs and prints a reconciliation
 (`1450 = 1431 tests + 15 footnotes + 4 flow-vis`). `npm run build` produces `dist/`.
 
+```bash
+npm test
+```
+
+`npm test` rebuilds the data and runs `scripts/test_pipeline.py`: row reconciliation,
+raw cells kept, every BASS-II ending quoted word for word from the transcription with
+its page, the cross-check, headline numbers recomputed from their rows, DOIs, citations
+and bundled photos.
+
+## Publishing
+
+`.github/workflows/deploy.yml` runs the checks and the build on every push and, on the
+publishing branch, deploys `dist/` to GitHub Pages. One-time setup in the repository:
+**Settings → Pages → Source: GitHub Actions**.
+
 ## The pages
 
 | Page | What it is |
 |---|---|
 | **Home** | A 3D match you can strike, with a gravity switch, and three data-backed findings. |
-| **Experiment Lab** | Choose what burns, which investigation, and the conditions. **Every control offers only values NASA recorded**, and each choice narrows the others. Centre: the 3D specimen in its recorded shape (rod, sheet, fabric, sphere, candle, droplet, gas burner), ignited at the top, with a flame that spreads until it engulfs the sample or ends the way the matching tests most often ended; a 2D side view with the recorded dimensions; and a flammability map. Right: what actually happened. Moon and Mars show cited literature results and no flame. |
+| **Lunar habitat** | Five recommendations for a habitat at about 30% O₂, 70 kPa and 0.16 g, each with its evidence and sources, how strong the evidence is, and the open questions it leaves. Drafted from the data for team review. |
+| **Experiment Lab** | Choose what burns, which investigation, and the conditions. **Every control offers only values NASA recorded**, and each choice narrows the others. Centre: the 3D specimen in its recorded shape (rod, sheet, fabric, sphere, candle, droplet, gas burner), ignited at the top, with a flame that spreads until it engulfs the sample or ends the way the matching tests most often ended; real NASA photographs and videos of the same experiments (NASA Image and Video Library) for comparison; a 2D side view with the recorded dimensions; and a flammability map. Right: what actually happened. Moon and Mars show cited literature results and no flame. |
 | **Data** | *Records*: all 1,450 rows with search, filters and a raw-row drawer. *Investigations*: profiles and a two-way compare. *Materials*: a card per tested material, with oxygen limits, 0 g vs 1 g, and literature from outside PSI marked as such. |
 | **Findings** | Key findings, surprises, verified results beyond PSI (LUCI, Saffire IV-VI, KC-135), negative knowledge, and a coverage grid. |
 | **Ranking** | Ranks investigations for a mission (default: lunar habitat, solid materials) on seven criteria, with every score, weight and calculation shown, a worked example and limitations. |
-| **Research questions** | 54 open questions, each with why it matters, what is known, what is missing, how to answer it and what to measure. Filterable, exportable as CSV. |
+| **Research questions** | The team's ten picks, then 54 open questions, each with why it matters, what is known, what is missing, how to answer it and what to measure. Filterable, exportable as CSV. |
 | **Pipeline** | How the data was built, and the AI-assisted extraction of BASS-II endings from the NASA report, with examples and the checks that were run on it. |
 | **About** | Team, how AI was used, Earth benefits, limitations, sources. |
 
@@ -95,7 +111,8 @@ BASS-II airflow uses NASA's calibration: velocity (cm/s) = Air display × 1.0066
 
 ## Known gaps
 
-- Five investigations have no DOI recorded yet: PSI-22, 39, 47, 107, 159.
+- PSI-22 (ACME E-FIELD) has no DOI recorded yet; the other four were found in DataCite
+  (NASA PSI prefix 10.60555).
 - Objectives text is collected only for PSI-25.
 - Not in this dataset as PSI tables: SAME, DAFT-2, SLICE, other ACME experiments, FLEX-2
   per-test table, Saffire IV-VI (selected Saffire IV-VI and LUCI values appear on the

@@ -61,12 +61,12 @@ INVESTIGATIONS = {
         summary="The first BASS campaign: 122 tests on PMMA spheres and slabs, SIBAL, Nomex, Ultem and wax. "
                 "The experimental table records materials and dates only.",
         sensors=[], sensors_basis="The table records sample identity only."),
-    "PSI-39": dict(acronym="CFI", title="Cool Flames Investigation", doi=None,
+    "PSI-39": dict(acronym="CFI", title="Cool Flames Investigation", doi="10.60555/m6pj-a914",
         hardware="CIR (MDCA)", platform="ISS", fuel_state="liquid", pillar="detection",
         summary="87 droplet tests of n-dodecane and dodecane/iso-dodecane blends at 0.5-5 atm and 17% or "
                 "21% oxygen, fibre-supported or free-floated.",
         sensors=[], sensors_basis="The table records conditions and fibre use; no instrument columns."),
-    "PSI-47": dict(acronym="DAFT", title="Dust and Aerosol Measurement Feasibility Test", doi=None,
+    "PSI-47": dict(acronym="DAFT", title="Dust and Aerosol Measurement Feasibility Test", doi="10.60555/ztgj-d202",
         hardware="Handheld aerosol instruments", platform="ISS", fuel_state="aerosol", pillar="detection",
         summary="Two sessions measuring Arizona Road Dust aerosol, relevant to how dust can confuse smoke "
                 "detectors.",
@@ -105,13 +105,13 @@ INVESTIGATIONS = {
                 "and Pyrell heated without flaming (pyrolysis smoke, not fire smoke).",
         sensors=["P-Trak", "Smoke detector (STS)"],
         sensors_basis="Named in the Description column (e.g. 'no Ptrak', 'STS det')."),
-    "PSI-107": dict(acronym="SPICE", title="Smoke Point In Co-flow Experiment", doi=None,
+    "PSI-107": dict(acronym="SPICE", title="Smoke Point In Co-flow Experiment", doi="10.60555/9kbh-e962",
         hardware="MSG", platform="ISS", fuel_state="gas", pillar="detection",
         summary="469 gas-jet tests locating the smoke point (where a flame starts releasing soot) for "
                 "ethylene, propane, propylene blends and methane across three nozzle sizes.",
         sensors=["Fuel flow controller (sccm)", "Co-flow air rate"],
         sensors_basis="Fuel rate and air rate columns."),
-    "PSI-159": dict(acronym="CFI-G", title="Cool Flames Investigation with Gases", doi=None,
+    "PSI-159": dict(acronym="CFI-G", title="Cool Flames Investigation with Gases", doi="10.60555/cyt1-kh64",
         hardware="CIR (ACME insert)", platform="ISS", fuel_state="gas", pillar="detection",
         summary="179 tests separating cool flames from hot ignition in ethane, propane and butane streams, "
                 "with seven cool-flame regimes labelled PCI-A to PCI-G.",
@@ -123,11 +123,11 @@ INVESTIGATIONS = {
 # dataset. Listed so their absence is visible rather than silent.
 NOT_INCLUDED = [
     {"name": "SAME (original)", "psi_id": "PSI-102", "doi": "10.60555/gd4k-8h62"},
-    {"name": "DAFT-2", "psi_id": None, "doi": None},
-    {"name": "SLICE", "psi_id": "PSI-106", "doi": None},
-    {"name": "ACME s-Flame", "psi_id": "PSI-23", "doi": None},
-    {"name": "ACME Flame Design", "psi_id": "PSI-10", "doi": None},
-    {"name": "ACME CLD Flame", "psi_id": "PSI-21", "doi": None},
+    {"name": "DAFT-2", "psi_id": "PSI-47", "doi": "10.60555/ztgj-d202"},
+    {"name": "SLICE", "psi_id": "PSI-106", "doi": "10.60555/pm12-rg61"},
+    {"name": "ACME s-Flame", "psi_id": "PSI-23", "doi": "10.60555/k57n-p030"},
+    {"name": "ACME Flame Design", "psi_id": "PSI-10", "doi": "10.60555/w4zy-bt45"},
+    {"name": "ACME CLD Flame", "psi_id": "PSI-21", "doi": "10.60555/23e1-9950"},
     {"name": "FLEX-2 per-test table", "psi_id": "PSI-68", "doi": "10.60555/byp8-h018"},
     {"name": "Saffire IV-VI", "psi_id": None, "doi": None},
 ]

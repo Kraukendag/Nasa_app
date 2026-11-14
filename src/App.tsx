@@ -15,6 +15,7 @@ import { loadDataset } from './data'
 import type { PageId } from './types'
 import Home from './pages/Home'
 import Lab from './pages/Lab'
+import Habitat from './pages/Habitat'
 import Data from './pages/Data'
 import Findings from './pages/Findings'
 import Ranking from './pages/Ranking'
@@ -23,6 +24,7 @@ import Pipeline from './pages/Pipeline'
 import About from './pages/About'
 
 const NAV: { id: PageId; label: string }[] = [
+  { id: 'habitat', label: 'Lunar habitat' },
   { id: 'lab', label: 'Experiment Lab' },
   { id: 'data', label: 'Data' },
   { id: 'findings', label: 'Findings' },
@@ -65,21 +67,21 @@ export default function App() {
             <img src={`${import.meta.env.BASE_URL}brand/microflamma-mark-light.png`} alt="" className="h-10 w-10 object-contain" />
             <span className="font-serif font-semibold text-lg text-ink tracking-tight">Micro Flamma</span>
           </a>
-          <nav className="hidden lg:flex items-center gap-1 ml-auto" aria-label="Pages">
+          <nav className="hidden xl:flex items-center gap-0.5 ml-auto" aria-label="Pages">
             {NAV.map((n) => (
               <a key={n.id} href={`#/${n.id}`} aria-current={page === n.id ? 'page' : undefined}
-                 className={`px-3 py-2 rounded no-underline hover:no-underline text-[14.5px] transition-colors
+                 className={`px-2.5 py-2 rounded no-underline hover:no-underline text-[14px] transition-colors
                    ${page === n.id ? 'text-ink font-medium bg-wash' : 'text-ink2 hover:text-ink'}`}>
                 {n.label}
               </a>
             ))}
           </nav>
-          <button className="btn lg:hidden ml-auto" onClick={() => setMenu((v) => !v)} aria-expanded={menu} aria-label="Menu">
+          <button className="btn xl:hidden ml-auto" onClick={() => setMenu((v) => !v)} aria-expanded={menu} aria-label="Menu">
             {menu ? 'Close' : 'Menu'}
           </button>
         </div>
         {menu && (
-          <nav className="lg:hidden border-t border-rule bg-card enter" aria-label="Pages">
+          <nav className="xl:hidden border-t border-rule bg-card enter" aria-label="Pages">
             {NAV.map((n) => (
               <a key={n.id} href={`#/${n.id}`} className={`block px-5 py-3 no-underline border-b border-rule/70 ${page === n.id ? 'text-ink font-medium bg-wash' : 'text-ink2'}`}>
                 {n.label}
@@ -95,6 +97,7 @@ export default function App() {
         {data && (
           <div key={page} className={page === 'lab' ? 'h-full' : ''}>
             {page === 'home' && <Home data={data} />}
+            {page === 'habitat' && <Habitat data={data} />}
             {page === 'lab' && <Lab data={data} />}
             {page === 'data' && <Data data={data} arg={arg} />}
             {page === 'findings' && <Findings data={data} />}

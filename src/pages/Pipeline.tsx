@@ -22,7 +22,7 @@ export default function Pipeline({ data }: { data: Dataset }) {
   const f = data.findings
   const m = data.flexModel.metrics
   const bass2 = data.tests.filter((t) => t.psi_id === 'PSI-25' && !t.is_note)
-  const extracted = bass2.filter((t) => t.normalized.outcome_text)
+  const extracted = bass2.filter((t) => (t.normalized.outcome_source ?? '').startsWith('NASA/TM'))
   const pages = [...new Set(extracted.map((t) => (t.normalized.outcome_source ?? '').match(/p\. (\d+)/)?.[1]).filter(Boolean))].sort()
   const examples = EXAMPLES.map((id) => bass2.find((t) => t.test_number === id)).filter(Boolean) as typeof bass2
   const classes = new Map<string, { label: string; n: number }>()

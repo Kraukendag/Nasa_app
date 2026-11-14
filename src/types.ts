@@ -170,6 +170,15 @@ export interface ResearchQuestion {
   priority: 'high' | 'medium'
 }
 
+export interface Recommendation {
+  id: string
+  title: string
+  action: string
+  evidence: { text: string; psi: string | null; lit: string | null }[]
+  strength: string
+  questions: string[]
+}
+
 export interface LiteratureSource { title: string; authors: string; venue: string; ntrs: string; url: string }
 export interface LiteraturePoint { source: string; g: number; material: string; quantity: string; value: number; unit: string; compare_1g: number; where: string }
 export interface SaffireRow { sample: string; material: string; length_cm: number; flow_cm_s: number; direction: string; pressure_kpa: number; o2_percent: number }
@@ -213,6 +222,8 @@ export interface Findings {
   negative_knowledge: NegativeEntry[]
   coverage: Coverage
   research_questions: ResearchQuestion[]
+  team_picks: string[]
+  recommendations: Recommendation[]
   spot_check: { checked: string[]; result: string; pages: number[] }
   cross_check: { checked: number; agree: number; rule: string; disagree: { test: string; cell: string; category: string; report: string }[] }
   not_included: { name: string; psi_id: string | null; doi: string | null }[]
@@ -249,4 +260,4 @@ export interface FlexModel {
   source: { psi_id: string; doi: string }
 }
 
-export type PageId = 'home' | 'lab' | 'data' | 'findings' | 'ranking' | 'questions' | 'pipeline' | 'about'
+export type PageId = 'home' | 'habitat' | 'lab' | 'data' | 'findings' | 'ranking' | 'questions' | 'pipeline' | 'about'

@@ -27,6 +27,7 @@ import { OUTCOME_MEANINGS, summarise, summariseOutcomes } from '../outcomes'
 import type { NumericSummary } from '../outcomes'
 import type { TestRecord } from '../types'
 import { LitCite } from '../ui'
+import { mediaFor, mediaUrl } from '../media'
 
 // Three.js is only downloaded when the Lab is opened.
 const Specimen = lazy(() => import('../components/Specimen'))
@@ -347,6 +348,8 @@ export default function Lab({ data }: { data: Dataset }) {
           </figcaption>
         </figure>
 
+        <RealImagery psi={psiShown} shape={shape} />
+
         <figure className="figure">
           <div className="p-3 sm:p-4 overflow-x-auto">
             <Schematic shape={shape} material={chosen} psi={psiShown} dims={sampleDims} lengthCm={lengthCm} widthCm={widthCm}
@@ -355,7 +358,7 @@ export default function Lab({ data }: { data: Dataset }) {
                        burnerMm={burnerMm} fiber={fiberAll} />
           </div>
           <figcaption className="figcap">
-            <b>Fig. 2.</b> Side view of the set-up with the recorded dimensions (median of the matching tests). A dimension
+            <b>Fig. 3.</b> Side view of the set-up with the recorded dimensions (most common value among the matching tests). A dimension
             that is not recorded is labelled so, never drawn to a guessed size.
             <span className="text-mute"> Source: investigation hardware descriptions on NASA PSI; dimensions from the test tables.</span>
           </figcaption>
@@ -369,7 +372,7 @@ export default function Lab({ data }: { data: Dataset }) {
                                selectedFlow={sel.flow != null ? Number(sel.flow) : null} />
             </div>
             <figcaption className="figcap">
-              <b>Fig. 3.</b> Every recorded {chosen} test by oxygen and airflow, marked by how it ended. Tests matching your
+              <b>Fig. 4.</b> Every recorded {chosen} test by oxygen and airflow, marked by how it ended. Tests matching your
               choices are drawn solid. No boundary is fitted: the points are the evidence.
               <span className="text-mute"> Source: PSI-25 BASS-II (NASA/TM-20210011385 App. A), PSI-98, PSI-99.</span>
             </figcaption>
@@ -672,5 +675,44 @@ function PartialGravityResults({ data, material }: { data: Dataset; material: st
         <a href="#/questions" className="small">Open research questions on partial gravity →</a>
       </Block>
     </>
+  )
+}
+
+/** Real photographs and videos of these flames, beside the illustration. */
+function RealImagery({ psi, shape }: { psi: string[]; shape: string }) {
+  const items = mediaFor(psi, shape)
+  const photos = items.filter((m) => m.kind === 'image')
+  const videos = items.filter((m) => m.kind === 'video')
+  return (
+    <figure className="figure">
+      {items.length ? (
+        <div className="p-3 sm:p-4 space-y-3">
+          {photos.length > 0 && (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+              {photos.map((m) => (
+                <a key={m.nasaId} href={mediaUrl(m)} target="_blank" rel="noreferrer" className="group block no-underline hover:no-underline">
+                  <img src={`${import.meta.env.BASE_URL}media/${m.file}`} alt={`${m.title}: ${m.caption}`} loading="lazy"
+                       className="w-full aspect-[3/2] object-cover rounded bg-viewport" />
+                  <span className="caption block mt-1 group-hover:text-ink">{m.nasaId} · {m.date}{m.related ? ' · related experiment' : ''}</span>
+                </a>
+              ))}
+            </div>
+          )}
+          {videos.map((m) => (
+            <p key={m.nasaId} className="small">
+              <a href={mediaUrl(m)} target="_blank" rel="noreferrer">▶ {m.title}</a>{' '}
+              <span className="text-ink2">{m.caption}</span>
+            </p>
+          ))}
+          {photos.length > 0 && <p className="caption">{photos[0].caption}</p>}
+        </div>
+      ) : (
+        <p className="p-4 small text-ink2">No photograph or video naming this experiment was found in the NASA Image and Video Library, so none is shown.</p>
+      )}
+      <figcaption className="figcap">
+        <b>Fig. 2.</b> The real flames, for comparison with the illustration above. Click any image for NASA's full description.
+        <span className="text-mute"> Source: NASA Image and Video Library (images.nasa.gov); NASA IDs as shown.</span>
+      </figcaption>
+    </figure>
   )
 }

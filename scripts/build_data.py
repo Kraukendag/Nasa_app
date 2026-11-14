@@ -29,6 +29,7 @@ from flex_model import build_flex_model
 from literature import build_literature
 from loaders import LOADERS, OUTCOME_LABELS
 from research_questions import build_research_questions
+from recommendations import TEAM_PICKS, build_recommendations
 
 OUT_DIR = "public/data"
 EXPECTED_TOTAL_ROWS = 1450
@@ -175,7 +176,7 @@ def main():
             {"id": "cool_flames_recorded", "title": f"{len(cfig_cool)} cool flames recorded in CFI-G",
              "text": cool_text,
              "evidence_class": "E1",
-             "evidence": {"psi_id": "PSI-159", "tests": cfig_cool, "doi": None}},
+             "evidence": {"psi_id": "PSI-159", "tests": cfig_cool, "doi": "10.60555/cyt1-kh64"}},
             {"id": "invisible_cool_flames", "title": "FLEX: flames that keep burning after they disappear",
              "text": ("FLEX researchers reported that large heptane droplets kept burning as invisible cool "
                       "flames after visible extinction. The FLEX table records visible extinction only, so "
@@ -205,6 +206,8 @@ def main():
         "negative_knowledge": derive.build_negative_knowledge(all_tests, doi_of),
         "coverage": coverage,
         "research_questions": build_research_questions(stats),
+        "team_picks": TEAM_PICKS,
+        "recommendations": build_recommendations(stats),
         "spot_check": {
             "checked": ["B18", "B21", "B9", "P22a", "P5", "M2", "M5", "T27", "T29", "T7"],
             "result": "10 of 10 match the report pages in content. One (M5) was a shortened quote without "
@@ -350,6 +353,7 @@ def compute_stats(real, per_inv, max_solid_o2):
         "saffire1_s1": s1.get("S1"), "saffire1_s2": s1.get("S2"),
         "saffire_w": ", ".join(f"{w:g}" for w in watts),
         "daft_n": sum(1 for t in real if t["psi_id"] == "PSI-47"),
+        "co_over_range": sum(1 for t in b2 if "sensor_over_range" in t["anomalies"]),
         "bass_n": sum(1 for t in real if t["psi_id"] == "PSI-26"),
     }
 

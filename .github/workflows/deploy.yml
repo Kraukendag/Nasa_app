@@ -1,0 +1,57 @@
+# =============================================================================
+#  CHECK AND PUBLISH
+# =============================================================================
+#  On every push: rebuild the data from the raw NASA files, run the pipeline
+#  checks (scripts/test_pipeline.py), typecheck and build the site. If all of
+#  that passes on the publishing branch, deploy dist/ to GitHub Pages.
+#
+#  One-time setup in the repository: Settings -> Pages -> Source: GitHub Actions.
+# =============================================================================
+name: Check and publish
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Rebuild data and run pipeline checks
+        run: python3 scripts/test_pipeline.py
+      - name: Fail if the committed data differs from a fresh rebuild
+        run: git diff --exit-code -- public/data
+      - run: npm ci
+      - name: Typecheck and build
+        run: npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/claude/youthful-cerf-ckylxk' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
