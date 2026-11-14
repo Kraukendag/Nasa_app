@@ -171,11 +171,13 @@ def build_research_questions(s):
       ["PSI-98"])
     q(F, "What happens to an established flame when ventilation is switched off and back on?",
       "Fans cycle and fail; a flame that revives when flow returns is a hidden hazard.",
-      f"BASS-II flames went out in all {s['flow_stopped']} tests where the crew stopped the flow; none was restarted.",
-      "Re-ignition after flow restoration is unmeasured.",
-      "Flow-duct tests with timed flow interruptions.",
-      "Time to extinction after flow stops; re-ignition when it resumes.",
-      ["PSI-25"])
+      f"BASS-II flames went out in all {s['flow_stopped']} tests where the crew stopped the flow; none was restarted. "
+      "In NASA Glenn ground tests that simulate microgravity, flamelets that survived low airflow flared up and "
+      "re-formed a full flame front when the airflow was increased.",
+      "No flight test restores ventilation after an apparent extinction, so re-ignition in orbit is unmeasured.",
+      "Flow-duct tests in orbit with timed flow interruptions and restarts.",
+      "Time to extinction after flow stops; whether surviving flamelets re-ignite when it resumes.",
+      ["PSI-25", "FLAMELETS2005"], priority="high")
     q(F, "Is a flame on the end of an object (stagnation flow) more stable than one spreading along it?",
       "Pipe ends, cable ends and corners face oncoming flow.",
       f"BASS-II ran {s['stagnation_n']} stagnation-flow tests on PMMA rods. Olson (2004): rods on Mir burned like a candle at the end of a fat wick instead of spreading.",
@@ -268,11 +270,12 @@ def build_research_questions(s):
       ["PSI-69"])
     q(I, "Can a near-limit flame relight when oxygen or airflow recovers?",
       "Determines whether a fire that seems out must still be monitored.",
-      "No PSI test records a deliberate relight.",
-      "Complete absence of data.",
+      "No PSI test records a deliberate relight. NASA Glenn narrow-channel tests (simulated microgravity) showed "
+      "flamelets acting as pilots that re-formed a full flame when airflow increased.",
+      "No microgravity flight data on relight after near-limit burning.",
       "Flow-duct tests with recovery steps.",
       "Relight probability vs time since extinction.",
-      [])
+      ["FLAMELETS2005"])
 
     # ------------------------------------------------------------- DETECTION
     D = "Detection"

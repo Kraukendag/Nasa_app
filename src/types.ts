@@ -188,6 +188,7 @@ export interface Literature {
   luci_notes: string[]
   saffire_iv_vi: SaffireRow[]
   statements: { source: string; text: string; where: string; g?: number[] }[]
+  flamelet_figure: { source: string; file: string; where: string; caption: string; setting: string }
   note: string
 }
 
@@ -223,6 +224,7 @@ export interface Findings {
   coverage: Coverage
   research_questions: ResearchQuestion[]
   team_picks: string[]
+  flamelets: { test: string; text: string; source: string }[]
   recommendations: Recommendation[]
   spot_check: { checked: string[]; result: string; pages: number[] }
   cross_check: { checked: number; agree: number; rule: string; disagree: { test: string; cell: string; category: string; report: string }[] }

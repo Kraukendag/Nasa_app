@@ -48,6 +48,15 @@ SOURCES = {
         "ntrs": "20210011385",
         "url": "https://ntrs.nasa.gov/citations/20210011385",
     },
+    # NASA Glenn "Research and Technology 2004"; NTRS marks it public use
+    # permitted with no third-party material, so its figure is bundled.
+    "FLAMELETS2005": {
+        "title": "New Species of Fire Discovered: Fingering Flamelets Form a Dynamic Population",
+        "authors": "Olson, Miller, Wichman",
+        "venue": "NASA Glenn Research and Technology 2004 (June 2005)",
+        "ntrs": "20050217475",
+        "url": "https://ntrs.nasa.gov/citations/20050217475",
+    },
 }
 
 # Measured values at gravity levels PSI does not cover, or with conditions
@@ -98,13 +107,33 @@ STATEMENTS = [
     {"source": "LPSC2026",
      "text": "Flammability of Materials on the Moon (FM2), planned for launch in late 2026, will burn four solid fuel samples in quiescent habitable atmospheres in real lunar gravity, with cameras, radiometers and an oxygen sensor.",
      "where": "Combustion on the Moon"},
+    {"source": "FLAMELETS2005",
+     "text": "Near extinction, in weakly convective environments such as microgravity or in vertically confined spaces, a flame breaks into numerous flamelets that form a fingering pattern as they spread across the fuel. This extends the flammability range to lower opposed flow velocities, lower oxygen concentrations or higher heat loss.",
+     "where": "p. 1 (NASA ground experiment in a narrow flow channel)"},
+    {"source": "FLAMELETS2005",
+     "text": "US spacecraft crews turn off ventilation to help put out a fire, then reactivate it to clear the smoke. Some flamelets can survive, and NASA Glenn experiments demonstrated that flamelets quickly grow into a large fire when ventilation increases.",
+     "where": "p. 1"},
     {"source": "LPSC2026",
      "text": "Partial-gravity test times: about 5 s in drop towers, about 25 s aboard aircraft, and about 150 s on a spinning sounding rocket.",
      "where": "Discussion"},
 ]
 
 
+# The NASA figure that shows flamelets (bundled in public/media).
+FLAMELET_FIGURE = {
+    "source": "FLAMELETS2005",
+    "file": "ntrs-20050217475-flamelets.jpg",
+    "where": "p. 2",
+    "caption": ("Top: at the end of the test, the airflow is increased to see if the flamelets can be blown out. "
+                "Instead, they flare up and remerge into a full flame front. Bottom: green light reveals the black "
+                "char fingers left on the paper once the flame broke into flamelets. Air came from the top; at "
+                "2 cm/s past the sample the flamelet population was about 13."),
+    "setting": "NASA Glenn ground experiment: a narrow flow channel that suppresses buoyancy, simulating microgravity. Not flight data.",
+}
+
+
 def build_literature():
     return {"sources": SOURCES, "points": POINTS, "luci_notes": LUCI_NOTES,
             "saffire_iv_vi": SAFFIRE_IV_VI, "statements": STATEMENTS,
+            "flamelet_figure": FLAMELET_FIGURE,
             "note": "Values checked against the NTRS documents listed. Not PSI data; never used in the Lab's matching or the FLEX model."}

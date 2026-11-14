@@ -207,6 +207,11 @@ def main():
         "coverage": coverage,
         "research_questions": build_research_questions(stats),
         "team_picks": TEAM_PICKS,
+        # BASS-II tests whose NASA notes mention flamelets (quoted, with page).
+        "flamelets": [{"test": t["test_number"], "text": t["normalized"]["outcome_text"],
+                       "source": t["normalized"]["outcome_source"]}
+                      for t in all_tests if t["psi_id"] == "PSI-25"
+                      and "flamelet" in (t["normalized"].get("outcome_text") or "").lower()],
         "recommendations": build_recommendations(stats),
         "spot_check": {
             "checked": ["B18", "B21", "B9", "P22a", "P5", "M2", "M5", "T27", "T29", "T7"],
@@ -354,6 +359,8 @@ def compute_stats(real, per_inv, max_solid_o2):
         "saffire_w": ", ".join(f"{w:g}" for w in watts),
         "daft_n": sum(1 for t in real if t["psi_id"] == "PSI-47"),
         "co_over_range": sum(1 for t in b2 if "sensor_over_range" in t["anomalies"]),
+        "flamelet_tests": " and ".join(t["test_number"] for t in b2
+                                       if "flamelet" in (n(t).get("outcome_text") or "").lower()),
         "bass_n": sum(1 for t in real if t["psi_id"] == "PSI-26"),
     }
 

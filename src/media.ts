@@ -2,7 +2,7 @@
 //  REAL NASA IMAGERY
 // =============================================================================
 //  Photographs and videos of the real flames, from the NASA Image and Video
-//  Library (images.nasa.gov). They sit next to the 3D illustration so anyone
+//  Library (images.nasa.gov) and NASA's Scientific Visualization Studio. They sit next to the 3D illustration so anyone
 //  can compare the drawing with the real thing.
 //
 //  * Photos are bundled in public/media (small versions, ~15 KB each) so the
@@ -28,9 +28,32 @@ export interface MediaItem {
   psi: string[]
   /** True when the imagery is from a related experiment, not a PSI table. */
   related?: boolean
+  /** Sample shapes this related imagery is shown for. */
+  shapes?: string[]
+  /** Where the item lives, when not the NASA Image and Video Library. */
+  pageUrl?: string
 }
 
+// SoFIE imagery: NASA Scientific Visualization Studio, "NASA Studies Fire in
+// Microgravity" (svs.gsfc.nasa.gov/31394, released 6 May 2026, credit NASA).
+// SoFIE is not one of the 14 PSI investigations, so it is shown for flat
+// solid samples and labelled as a related experiment.
+const SVS = 'https://svs.gsfc.nasa.gov/31394/'
+const FLAT = ['fabric', 'sheet', 'film', 'slab', 'composite sheet']
+
 export const MEDIA: MediaItem[] = [
+  { nasaId: 'SVS 31394 · SoFIE GEL', kind: 'image', file: 'svs31394-sofie-gel-pmma.jpg', date: '2026-05-06', psi: [], related: true, shapes: FLAT,
+    pageUrl: `${SVS}#media_group_380279`, title: 'Solid Fuel Ignition and Extinction (SoFIE) Growth and Extinction Limits (GEL)',
+    caption: 'This image is from the Solid Fuel Ignition and Extinction (SoFIE) Growth and Extinction Limits (GEL) experiment aboard the space station. (NASA’s file name: opposed flow, air, 0.5 mm PMMA.)' },
+  { nasaId: 'SVS 31394 · SoFIE fabric', kind: 'image', file: 'svs31394-sofie-fabric-0.2s.jpg', date: '2026-05-06', psi: [], related: true, shapes: FLAT,
+    pageUrl: `${SVS}#media_group_380278`, title: 'SoFIE: thin fabric sheet in a quiescent chamber',
+    caption: 'A thin fabric sheet burning in a quiescent chamber in microgravity. The burning sample generates its own flow as fuel is vaporized, drawing fresh oxygen into the flame; the flame brightens periodically as oxygen is drawn in. Images are 0.2 s apart.' },
+  { nasaId: 'jsc2023e013681', kind: 'image', file: 'jsc2023e013681.jpg', date: '2023-03-09', psi: [], related: true, shapes: FLAT,
+    pageUrl: `${SVS}#media_group_380285`, title: 'SoFIE Growth and Extinction Limits (GEL)',
+    caption: 'A sequence of snapshots taken about 3 seconds apart during the Solid Fuel Ignition and Extinction (SoFIE) Growth and Extinction Limits (GEL) experiment aboard the space station.' },
+  { nasaId: 'SVS 31394 · SoFIE', kind: 'image', file: 'svs31394-sofie3.jpg', date: '2026-05-06', psi: [], related: true, shapes: FLAT,
+    pageUrl: `${SVS}#media_group_380280`, title: 'Solid Fuel Ignition and Extinction (SoFIE)',
+    caption: 'This image is from the Solid Fuel Ignition and Extinction (SoFIE) experiment aboard the space station.' },
   { nasaId: 'iss040e086481', kind: 'image', file: 'iss040e086481.jpg', date: '2014-08-02', psi: ['PSI-25'],
     title: 'BASS-II Experiment',
     caption: 'Image taken on card 8 during BASS-II flame test session with reduced O2 partial pressure. Session conducted on GMT 213.' },
@@ -60,9 +83,13 @@ export const MEDIA: MediaItem[] = [
     caption: 'A hot flame from the Cool Flames Investigation with Gases. After the flame appears to go out, a cool flame forms, too faint to see in real time.' },
 ]
 
-export const mediaUrl = (m: MediaItem) => `https://images.nasa.gov/details/${encodeURIComponent(m.nasaId)}`
+export const mediaUrl = (m: MediaItem) => m.pageUrl ?? `https://images.nasa.gov/details/${encodeURIComponent(m.nasaId)}`
 
 /** Imagery for the investigations behind the current Lab selection. */
 export function mediaFor(psi: string[], shape: string): MediaItem[] {
-  return MEDIA.filter((m) => m.psi.some((p) => psi.includes(p)) || (shape === 'candle' && m.nasaId === 'sts050-232-011'))
+  // Imagery of the PSI investigations themselves first, related experiments after.
+  return MEDIA.filter((m) => m.psi.some((p) => psi.includes(p))
+    || (shape === 'candle' && m.nasaId === 'sts050-232-011')
+    || (m.shapes?.includes(shape) ?? false))
+    .sort((a, b) => Number(!!a.related && !a.psi.some((p) => psi.includes(p))) - Number(!!b.related && !b.psi.some((p) => psi.includes(p))))
 }

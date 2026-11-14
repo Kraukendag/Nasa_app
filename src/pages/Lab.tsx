@@ -691,9 +691,9 @@ function RealImagery({ psi, shape }: { psi: string[]; shape: string }) {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
               {photos.map((m) => (
                 <a key={m.nasaId} href={mediaUrl(m)} target="_blank" rel="noreferrer" className="group block no-underline hover:no-underline">
-                  <img src={`${import.meta.env.BASE_URL}media/${m.file}`} alt={`${m.title}: ${m.caption}`} loading="lazy"
-                       className="w-full aspect-[3/2] object-cover rounded bg-viewport" />
-                  <span className="caption block mt-1 group-hover:text-ink">{m.nasaId} · {m.date}{m.related ? ' · related experiment' : ''}</span>
+                  <img src={`${import.meta.env.BASE_URL}media/${m.file}`} alt={`${m.title}: ${m.caption}`} title={m.caption} loading="lazy"
+                       className="w-full aspect-[3/2] object-contain rounded bg-viewport" />
+                  <span className="caption block mt-1 group-hover:text-ink">{m.nasaId} · {m.date}{m.related ? ' · related experiment, not PSI' : ''}</span>
                 </a>
               ))}
             </div>
@@ -704,14 +704,21 @@ function RealImagery({ psi, shape }: { psi: string[]; shape: string }) {
               <span className="text-ink2">{m.caption}</span>
             </p>
           ))}
-          {photos.length > 0 && <p className="caption">{photos[0].caption}</p>}
+          {photos.length > 0 && (
+            <details className="small">
+              <summary className="cursor-pointer text-ink2">NASA's captions</summary>
+              <ul className="mt-2 space-y-1.5">
+                {photos.map((m) => <li key={m.nasaId} className="text-ink2"><span className="num caption">{m.nasaId}:</span> {m.caption}</li>)}
+              </ul>
+            </details>
+          )}
         </div>
       ) : (
         <p className="p-4 small text-ink2">No photograph or video naming this experiment was found in the NASA Image and Video Library, so none is shown.</p>
       )}
       <figcaption className="figcap">
         <b>Fig. 2.</b> The real flames, for comparison with the illustration above. Click any image for NASA's full description.
-        <span className="text-mute"> Source: NASA Image and Video Library (images.nasa.gov); NASA IDs as shown.</span>
+        <span className="text-mute"> Source: NASA Image and Video Library (images.nasa.gov) and NASA Scientific Visualization Studio (svs.gsfc.nasa.gov/31394); IDs as shown. Items marked “related experiment” are other NASA investigations (SoFIE, Candle Flames in Microgravity), not PSI tables.</span>
       </figcaption>
     </figure>
   )

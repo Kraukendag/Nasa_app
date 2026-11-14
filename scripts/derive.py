@@ -31,7 +31,11 @@ INVESTIGATIONS = {
         summary="Gaseous burner tests that emulate the burning of solid and liquid fuels, using "
                 "methane and ethylene at oxygen levels from 21% to 40%.",
         sensors=[], sensors_basis="The table summarises daily results; it names no instruments."),
-    "PSI-22": dict(acronym="ACME E-FIELD", title="Electric Field Effects on Flames", doi=None,
+    "PSI-22": dict(acronym="ACME E-FIELD",
+        title="Electric-Field Effects on Laminar Diffusion Flames (ACME E-FIELD Flames)", doi="10.60555/se5a-8c73",
+        objectives=("The objective of this investigation is to better understand the relationship between electric "
+                    "field voltage and chemi-ion current, analyze the dynamic response of flames to electric field "
+                    "changes, evaluate soot formation, and characterize stabilized near-limit lifted flames."),
         hardware="CIR (ACME insert)", platform="ISS", fuel_state="gas", pillar="prevention",
         summary="Applies a high-voltage electric field to microgravity flames. The ion wind mimics some "
                 "effects of gravity, but this is NOT partial-gravity data.",

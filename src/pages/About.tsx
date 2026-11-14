@@ -73,11 +73,13 @@ export default function About({ data }: { data: Dataset }) {
         BASS-II's objectives say it feeds “the combustion computational models used in the design of fire detection and
         suppression systems in microgravity and on Earth” (PSI-25 record). The links below are context, not results in these tables.
       </>}>
-        <div className="grid md:grid-cols-3 gap-4">
+        <div className="grid md:grid-cols-2 gap-4">
           <Benefit title="Smoke detectors that tell smoke from dust" tag="PSI-101 SAME-R · PSI-47 DAFT"
                    body="SAME-R measures how smoke particles grow as they age; DAFT measures the dust that causes false alarms. A building's smoke detector faces the same problem." />
           <Benefit title="Soot and cleaner flames" tag="PSI-107 SPICE"
                    body="SPICE locates the smoke point, the fuel flow at which a flame starts releasing soot, which also matters for burners and engines." />
+          <Benefit title="Patchier, safer prescribed burns" tag="NASA Glenn, NTRS 20050217475"
+                   body="NASA Glenn researchers note that the least damaging wildfires leave a mosaic of unburned fingers and islands, and that understanding fingering flamelets could help plan prescribed burns that do the same." />
           <Benefit title="Low-temperature combustion" tag="PSI-39 CFI · PSI-159 CFI-G"
                    body="Cool flames are the low-temperature chemistry that precedes ignition in engines. Without buoyancy they can be studied cleanly." />
         </div>

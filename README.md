@@ -71,9 +71,10 @@ publishing branch, deploys `dist/` to GitHub Pages. One-time setup in the reposi
 |---|---|
 | **Home** | A 3D match you can strike, with a gravity switch, and three data-backed findings. |
 | **Lunar habitat** | Five recommendations for a habitat at about 30% O₂, 70 kPa and 0.16 g, each with its evidence and sources, how strong the evidence is, and the open questions it leaves. Drafted from the data for team review. |
-| **Experiment Lab** | Choose what burns, which investigation, and the conditions. **Every control offers only values NASA recorded**, and each choice narrows the others. Centre: the 3D specimen in its recorded shape (rod, sheet, fabric, sphere, candle, droplet, gas burner), ignited at the top, with a flame that spreads until it engulfs the sample or ends the way the matching tests most often ended; real NASA photographs and videos of the same experiments (NASA Image and Video Library) for comparison; a 2D side view with the recorded dimensions; and a flammability map. Right: what actually happened. Moon and Mars show cited literature results and no flame. |
+| **Experiment Lab** | Choose what burns, which investigation, and the conditions. **Every control offers only values NASA recorded**, and each choice narrows the others. Centre: the 3D specimen in its recorded shape (rod, sheet, fabric, sphere, candle, droplet, gas burner), ignited at the top, with a flame that spreads until it engulfs the sample or ends the way the matching tests most often ended; real NASA photographs and videos of the same experiments (NASA Image and Video Library), plus
+related NASA SoFIE imagery for flat samples, for comparison; a 2D side view with the recorded dimensions; and a flammability map. Right: what actually happened. Moon and Mars show cited literature results and no flame. |
 | **Data** | *Records*: all 1,450 rows with search, filters and a raw-row drawer. *Investigations*: profiles and a two-way compare. *Materials*: a card per tested material, with oxygen limits, 0 g vs 1 g, and literature from outside PSI marked as such. |
-| **Findings** | Key findings, surprises, verified results beyond PSI (LUCI, Saffire IV-VI, KC-135), negative knowledge, and a coverage grid. |
+| **Findings** | Key findings, surprises, flames that break into flamelets (BASS-II tests T4 and T5 plus a NASA Glenn ground experiment), verified results beyond PSI (LUCI, Saffire IV-VI, KC-135), negative knowledge, and a coverage grid. |
 | **Ranking** | Ranks investigations for a mission (default: lunar habitat, solid materials) on seven criteria, with every score, weight and calculation shown, a worked example and limitations. |
 | **Research questions** | The team's ten picks, then 54 open questions, each with why it matters, what is known, what is missing, how to answer it and what to measure. Filterable, exportable as CSV. |
 | **Pipeline** | How the data was built, and the AI-assisted extraction of BASS-II endings from the NASA report, with examples and the checks that were run on it. |
@@ -81,6 +82,9 @@ publishing branch, deploys `dist/` to GitHub Pages. One-time setup in the reposi
 
 ## Rules the code enforces
 
+0. **NASA sources only.** Every value comes from NASA: the PSI tables, NASA technical reports
+   on NTRS, and NASA imagery (images.nasa.gov, svs.gsfc.nasa.gov). Other sources may only be
+   mentioned to point out what NASA lacks. `npm test` fails if a non-NASA source is cited.
 1. **Nothing is invented.** A blank cell is `null`, never `0`. Lists and ranges stay lists
    and ranges (ACME BRE's "21; 26.5; 40" is not collapsed to 40).
 2. **No partial-gravity values are computed.** PSI has 0 g and, for SAFFIRE-II, 1 g. Moon
@@ -112,8 +116,8 @@ BASS-II airflow uses NASA's calibration: velocity (cm/s) = Air display × 1.0066
 
 ## Known gaps
 
-- PSI-22 (ACME E-FIELD) has no DOI recorded yet; the other four were found in DataCite
-  (NASA PSI prefix 10.60555).
+- All 14 investigations have a DOI (NASA PSI prefix 10.60555); four were found in DataCite and
+  PSI-22's was read from its PSI page.
 - Objectives text is collected only for PSI-25.
 - Not in this dataset as PSI tables: SAME, DAFT-2, SLICE, other ACME experiments, FLEX-2
   per-test table, Saffire IV-VI (selected Saffire IV-VI and LUCI values appear on the

@@ -118,10 +118,10 @@ def _():
     assert len(silicone) == 4, len(silicone)
 
 
-@check("DOIs: well formed, and only PSI-22 still missing")
+@check("DOIs: every investigation has one, and each is well formed")
 def _():
     missing = [i["psi_id"] for i in invs if not i["doi"]]
-    assert missing == ["PSI-22"], missing
+    assert missing == [], missing
     for i in invs:
         if i["doi"]:
             assert re.fullmatch(r"10\.60555/[0-9a-z]{4}-[0-9a-z]{4}", i["doi"]), i["doi"]
@@ -151,6 +151,21 @@ def _():
     assert files, "no images listed"
     for name in files:
         assert os.path.exists(os.path.join(ROOT, "public", "media", name)), name
+
+
+@check("NASA sources only: every citation, DOI and image comes from a NASA host")
+def _():
+    nasa = re.compile(r"^https://([a-z0-9-]+\.)*nasa\.gov/")
+    for k, src in lit["sources"].items():
+        assert nasa.match(src["url"]), (k, src["url"])
+    for i in invs:
+        assert nasa.match(i["psi_url"]), i["psi_id"]
+        # NASA PSI registers its DOIs under the 10.60555 prefix.
+        assert i["doi"] is None or i["doi"].startswith("10.60555/"), i["doi"]
+    with open(os.path.join(ROOT, "src", "media.ts"), encoding="utf-8") as f:
+        media = f.read()
+    hosts = set(re.findall(r"https://([a-z0-9.-]+)", media))
+    assert hosts and all(h.endswith("nasa.gov") for h in hosts), hosts
 
 
 @check("the FLEX model beats always guessing the common outcome")

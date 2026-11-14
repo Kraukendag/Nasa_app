@@ -72,19 +72,24 @@ def build_recommendations(s):
         },
         {
             "id": "R4",
-            "title": "Build ventilation shut-off into the fire response, but do not treat slow air as safe",
-            "action": "Make it possible to stop air movement quickly in each module, and avoid ventilation "
-                      "speeds near the range where weak flames survive longest.",
+            "title": "Shut off ventilation to fight a fire, and confirm it is fully out before turning it back on",
+            "action": "Make it possible to stop air movement quickly in each module, and before ventilation is "
+                      "restored, check that no near-invisible flamelets survive; do not treat slow air as safe.",
             "evidence": [
                 {"text": f"In BASS-II, {s['low_flow']} flames went out as the crew turned the airflow down and "
                          f"{s['flow_stopped']} when they stopped it.", "psi": "PSI-25", "lit": None},
                 {"text": f"Raising the airflow blew {s['blowoff']} flames off.", "psi": "PSI-25", "lit": None},
                 {"text": "With flow on the order of spacecraft ventilation (5-20 cm/s), flames survived at 14% O2, "
                          "below the Earth limit of 16.5%.", "psi": None, "lit": "OLSON2004"},
+                {"text": f"BASS-II noted flamelets in orbit: tests {s['flamelet_tests']}. In T5 a small, dim "
+                         "flamelet seemed to burn the full sample length at very low airflow.", "psi": "PSI-25", "lit": None},
+                {"text": "In NASA Glenn ground tests simulating microgravity, flamelets that survived low airflow "
+                         "quickly grew into a large fire when ventilation increased.", "psi": None, "lit": "FLAMELETS2005"},
             ],
             "strength": "Turning the flow down was the experiment's procedure, so these counts show that stopping "
-                        "the air puts flames out, not how often a real fire would be stopped.",
-            "questions": ["Q17", "Q21", "Q44"],
+                        "the air puts flames out, not how often a real fire would be stopped. The flare-up on "
+                        "restart was seen in ground tests that simulate microgravity, not yet in orbit.",
+            "questions": ["Q17", "Q21", "Q34", "Q44"],
         },
         {
             "id": "R5",
@@ -94,6 +99,9 @@ def build_recommendations(s):
             "evidence": [
                 {"text": f"All {s['samer_n']} SAME-R smoke measurements come from heated, non-flaming samples.",
                  "psi": "PSI-101", "lit": None},
+                {"text": "On Mir (15 October 1994) a jumpsuit used to smother a small fire kept burning unnoticed "
+                         "and burned through; NASA notes it could have grown undetected into a large fire.",
+                 "psi": None, "lit": "FLAMELETS2005"},
                 {"text": f"DAFT measured dust aerosols in the ISS cabin ({s['daft_n']} sessions), the particles "
                          "that cause false alarms.", "psi": "PSI-47", "lit": None},
                 {"text": f"Carbon monoxide readings reached {s['co_max']:g} ppm in BASS-II test {s['co_max_test']}, "

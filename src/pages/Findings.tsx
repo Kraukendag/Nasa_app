@@ -109,7 +109,7 @@ export default function Findings({ data }: { data: Dataset }) {
           </Fig>
 
           <div className="grid md:grid-cols-2 gap-4">
-            {lit.statements.map((s, i) => (
+            {lit.statements.filter((s) => s.source !== 'FLAMELETS2005').map((s, i) => (
               <blockquote key={i} className="card p-5">
                 <p className="small text-ink2">{s.text}</p>
                 <footer className="mt-2"><LitCite data={data} keyName={s.source} /><span className="caption"> · {s.where}</span></footer>
@@ -119,6 +119,8 @@ export default function Findings({ data }: { data: Dataset }) {
           <p className="caption">{lit.note}</p>
         </div>
       </Section>
+
+      <Flamelets data={data} />
 
       <Section title="What failed, and what is missing" intro={<>
         Negative results are results. These are attempts that never lit, outcomes nobody expected, and instruments or
@@ -151,7 +153,7 @@ export default function Findings({ data }: { data: Dataset }) {
         Solid-fuel tests in PSI by oxygen level and gravity. Empty cells are hatched: nothing was measured there, so
         nothing can be said.
       </>}>
-        <Fig n={3} caption={<>Number of PSI solid-fuel tests in each oxygen band and gravity level. The planned lunar habitat
+        <Fig n={4} caption={<>Number of PSI solid-fuel tests in each oxygen band and gravity level. The planned lunar habitat
           sits at about 30% O₂ and 0.16 g: an empty cell for every material.</>} source="computed from the PSI tables">
           <div className="overflow-x-auto p-4">
             <Coverage data={data} />
@@ -200,5 +202,47 @@ function Coverage({ data }: { data: Dataset }) {
         ))}
       </tbody>
     </table>
+  )
+}
+
+/** Flames that break into flamelets: BASS-II notes from orbit plus the NASA
+ *  Glenn ground experiment that explains them (NTRS 20050217475). */
+function Flamelets({ data }: { data: Dataset }) {
+  const fig = data.literature.flamelet_figure
+  const quotes = data.literature.statements.filter((s) => s.source === 'FLAMELETS2005')
+  return (
+    <Section title="Flames that break into flamelets" intro={<>
+      Near its limit, a flame in microgravity does not simply go out. It can split into many small flames that each
+      burn their own channel toward the incoming air, and survive where a full flame could not.
+    </>}>
+      <div className="grid lg:grid-cols-[minmax(0,320px)_1fr] gap-6 items-start">
+        <Fig n={3} caption={fig.caption} source={<><LitCite data={data} keyName={fig.source} />, {fig.where}. {fig.setting}</>}>
+          <img src={`${import.meta.env.BASE_URL}media/${fig.file}`} alt="Flamelets re-forming a flame front when airflow increases (top) and the char fingers they leave on paper (bottom)"
+               className="w-full bg-viewport" loading="lazy" />
+        </Fig>
+        <div className="space-y-6">
+          <div>
+            <h3 className="h3">Seen in orbit: BASS-II</h3>
+            <ul className="mt-2 divide-y divide-rule border-y border-rule">
+              {data.findings.flamelets.map((f) => (
+                <li key={f.test} className="py-3">
+                  <blockquote className="text-ink2">“{f.text}”</blockquote>
+                  <p className="caption num mt-1">PSI-25 test {f.test} · {f.source}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h3 className="h3">Explained on the ground: NASA Glenn</h3>
+            {quotes.map((q) => <p key={q.text} className="text-ink2 mt-2">{q.text} <span className="caption">({q.where})</span></p>)}
+          </div>
+          <p className="wash p-4 small text-ink2">
+            <b className="text-ink">Why it matters:</b> crews switch ventilation off to fight a fire and back on to clear the
+            smoke. A flamelet that survives can re-ignite the fire when the air returns. See recommendation R4 on the{' '}
+            <a href="#/habitat">Lunar habitat</a> page.
+          </p>
+        </div>
+      </div>
+    </Section>
   )
 }
