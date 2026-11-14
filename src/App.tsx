@@ -1,113 +1,118 @@
 // =============================================================================
 //  APP SHELL
 // =============================================================================
-//  The top navigation, whichever tab is showing, and the disclaimer footer.
-//  Loads the data once and hands it to each tab.
+//  The top bar, the current page and the footer. Pages are addressed by the
+//  URL hash (#/lab, #/data ...) so the browser's back button and shared links
+//  work, without any server.
 //
-//  Tabs:  3D Match · Experiment Lab · Data Library · Insights · About
+//  The home page is the 3D match; it is reached through the logo rather than
+//  a tab. On small screens the page list folds into a menu button.
 // =============================================================================
 
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Dataset } from './data'
 import { loadDataset } from './data'
-import type { TabId } from './types'
-import TabMatch from './components/TabMatch'
-import TabLab from './components/TabLab'
-import TabLibrary from './components/TabLibrary'
-import TabInsights from './components/TabInsights'
-import TabAbout from './components/TabAbout'
+import type { PageId } from './types'
+import Home from './pages/Home'
+import Lab from './pages/Lab'
+import Data from './pages/Data'
+import Findings from './pages/Findings'
+import Ranking from './pages/Ranking'
+import Questions from './pages/Questions'
+import Pipeline from './pages/Pipeline'
+import About from './pages/About'
 
-const TABS: { id: TabId; label: string; hint: string }[] = [
-  { id: 'match', label: '3D Match', hint: 'Light a match with gravity on or off' },
-  { id: 'lab', label: 'Experiment Lab', hint: 'Recorded conditions and what happened' },
-  { id: 'library', label: 'Data Library', hint: 'All 1,450 records, investigations and materials' },
-  { id: 'insights', label: 'Insights', hint: 'Rankings, negative knowledge, open questions, ask the data' },
-  { id: 'about', label: 'About', hint: 'The team, sources and limitations' },
+const NAV: { id: PageId; label: string }[] = [
+  { id: 'lab', label: 'Experiment Lab' },
+  { id: 'data', label: 'Data' },
+  { id: 'findings', label: 'Findings' },
+  { id: 'ranking', label: 'Ranking' },
+  { id: 'questions', label: 'Research questions' },
+  { id: 'pipeline', label: 'Pipeline' },
+  { id: 'about', label: 'About' },
 ]
+const PAGES = new Set<string>(['home', ...NAV.map((n) => n.id)])
+
+function readHash(): { page: PageId; arg: string | null } {
+  const [, page, arg] = window.location.hash.split('/')
+  return { page: (PAGES.has(page) ? page : 'home') as PageId, arg: arg ? decodeURIComponent(arg) : null }
+}
+
+/** Navigate to a page, optionally with an argument (e.g. a material). */
+export function go(page: PageId, arg?: string) {
+  window.location.hash = arg ? `#/${page}/${encodeURIComponent(arg)}` : `#/${page}`
+}
 
 export default function App() {
-  const [tab, setTab] = useState<TabId>('match')
+  const [route, setRoute] = useState(readHash)
   const [data, setData] = useState<Dataset | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [menu, setMenu] = useState(false)
+
   useEffect(() => { loadDataset().then(setData).catch((e: Error) => setError(e.message)) }, [])
+  useEffect(() => {
+    const on = () => { setRoute(readHash()); setMenu(false); document.getElementById('main')?.scrollTo(0, 0) }
+    window.addEventListener('hashchange', on)
+    return () => window.removeEventListener('hashchange', on)
+  }, [])
 
-  // Hand-offs into the Data Library: a material (from the Lab) or a search
-  // query (from Ask the data), applied once the Library opens.
-  const [libMaterial, setLibMaterial] = useState<string | null>(null)
-  const [libQuery, setLibQuery] = useState<string | null>(null)
-  const toLibraryMaterial = useCallback((m: string) => { setLibMaterial(m); setTab('library') }, [])
-  const toLibraryQuery = useCallback((q: string) => { setLibQuery(q); setTab('library') }, [])
-  const consumed = useCallback(() => { setLibMaterial(null); setLibQuery(null) }, [])
-
+  const { page, arg } = route
   return (
-    // h-dvh, not min-h-screen: the shell must be exactly the window's height so
-    // a tab can fill it (the Lab's 3D view) or scroll inside it. With
-    // min-h-screen the page grew with content and the 3D canvas ran off-screen.
     <div className="h-dvh flex flex-col overflow-hidden">
-      <header className="sticky top-0 z-40 border-b border-edge bg-void/85 backdrop-blur-md shrink-0">
-        <div className="max-w-[1800px] mx-auto px-3 sm:px-6 h-14 sm:h-16 flex items-center gap-2 sm:gap-6">
-          <button onClick={() => setTab('match')} className="flex items-center gap-2.5 group shrink-0" aria-label="Micro Flamma home">
-            <img src={`${import.meta.env.BASE_URL}brand/microflamma-mark.png`} alt=""
-                 className="h-9 w-9 sm:h-10 sm:w-10 object-contain transition-transform duration-500 group-hover:rotate-[14deg]" />
-            <div className="hidden md:block leading-none text-left">
-              <div className="font-bold tracking-[0.16em] text-sm"><span className="text-flame">MICRO</span> <span className="text-slate-100">FLAMMA</span></div>
-              <div className="text-[9px] tracking-[0.22em] text-mute mt-1">FIRE IN FREEFALL</div>
-            </div>
-          </button>
-          <nav className="flex items-center gap-0.5 ml-auto overflow-x-auto" role="tablist">
-            {TABS.map((t) => (
-              <button key={t.id} role="tab" aria-selected={tab === t.id} title={t.hint} onClick={() => setTab(t.id)}
-                      className={`relative px-2 sm:px-3.5 py-2 text-[11px] sm:text-sm rounded-md whitespace-nowrap transition-all duration-200
-                        ${tab === t.id ? 'text-white' : 'text-mute hover:text-slate-200 hover:bg-navy/40'}`}>
-                {t.label}
-                {tab === t.id && <span className="absolute left-2 right-2 -bottom-[1px] h-[2px] rounded-full bg-gradient-to-r from-cryo via-star to-flame anim-fade-in" />}
-              </button>
+      <header className="shrink-0 bg-card rule-b z-40">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-8 h-16 flex items-center gap-4">
+          <a href="#/home" className="flex items-center gap-2.5 no-underline hover:no-underline shrink-0" aria-label="Micro Flamma home">
+            <img src={`${import.meta.env.BASE_URL}brand/microflamma-mark-light.png`} alt="" className="h-10 w-10 object-contain" />
+            <span className="font-serif font-semibold text-lg text-ink tracking-tight">Micro Flamma</span>
+          </a>
+          <nav className="hidden lg:flex items-center gap-1 ml-auto" aria-label="Pages">
+            {NAV.map((n) => (
+              <a key={n.id} href={`#/${n.id}`} aria-current={page === n.id ? 'page' : undefined}
+                 className={`px-3 py-2 rounded no-underline hover:no-underline text-[14.5px] transition-colors
+                   ${page === n.id ? 'text-ink font-medium bg-wash' : 'text-ink2 hover:text-ink'}`}>
+                {n.label}
+              </a>
             ))}
           </nav>
+          <button className="btn lg:hidden ml-auto" onClick={() => setMenu((v) => !v)} aria-expanded={menu} aria-label="Menu">
+            {menu ? 'Close' : 'Menu'}
+          </button>
         </div>
+        {menu && (
+          <nav className="lg:hidden border-t border-rule bg-card enter" aria-label="Pages">
+            {NAV.map((n) => (
+              <a key={n.id} href={`#/${n.id}`} className={`block px-5 py-3 no-underline border-b border-rule/70 ${page === n.id ? 'text-ink font-medium bg-wash' : 'text-ink2'}`}>
+                {n.label}
+              </a>
+            ))}
+          </nav>
+        )}
       </header>
 
-      <main className="flex-1 flex flex-col min-h-0 overflow-y-auto">
-        {error && (
-          <div className="m-6 panel p-5 border-flame/40">
-            <div className="badge badge-alert mb-2">Data failed to load</div>
-            <p className="text-sm text-slate-300">{error}</p>
-            <p className="text-xs text-mute mt-2">Run <code className="text-star">python3 scripts/build_data.py</code>, then reload.</p>
-          </div>
-        )}
-        {!data && !error && <LoadingPanel />}
+      <main id="main" className="flex-1 min-h-0 overflow-y-auto">
+        {error && <div className="max-w-3xl mx-auto p-8"><p className="h3">The data failed to load.</p><p className="text-ink2 mt-2">{error}. Run <code>python3 scripts/build_data.py</code> and reload.</p></div>}
+        {!data && !error && <div className="h-full grid place-items-center caption">Loading NASA PSI records…</div>}
         {data && (
-          <div key={tab} className="flex-1 min-h-0 flex flex-col anim-fade-in">
-            {tab === 'match' && <TabMatch data={data} onOpenLab={() => setTab('lab')} onOpenInsights={() => setTab('insights')} />}
-            {tab === 'lab' && <TabLab data={data} onInspect={toLibraryMaterial} />}
-            {tab === 'library' && <TabLibrary data={data} presetMaterial={libMaterial} presetQuery={libQuery} onPresetConsumed={consumed} />}
-            {tab === 'insights' && <TabInsights data={data} onSearchRows={toLibraryQuery} />}
-            {tab === 'about' && <TabAbout data={data} />}
+          <div key={page} className={page === 'lab' ? 'h-full' : ''}>
+            {page === 'home' && <Home data={data} />}
+            {page === 'lab' && <Lab data={data} />}
+            {page === 'data' && <Data data={data} arg={arg} />}
+            {page === 'findings' && <Findings data={data} />}
+            {page === 'ranking' && <Ranking data={data} />}
+            {page === 'questions' && <Questions data={data} />}
+            {page === 'pipeline' && <Pipeline data={data} />}
+            {page === 'about' && <About data={data} />}
           </div>
         )}
       </main>
 
-      <footer className="border-t border-edge bg-void/80 px-4 sm:px-6 py-2 shrink-0">
-        <div className="max-w-[1800px] mx-auto flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[10px] text-mute">
-          <span className="text-star">Research data summary — not a material certification or safety approval.</span>
-          <span className="hidden sm:inline">All values from NASA Physical Sciences Informatics experimental tables and the BASS-II Summary Report.</span>
-          <span className="ml-auto tabular">{data ? `${data.tests.length.toLocaleString()} records` : '—'}</span>
+      <footer className="shrink-0 border-t border-rule bg-card px-4 sm:px-8 py-2">
+        <div className="max-w-[1400px] mx-auto flex flex-wrap gap-x-5 gap-y-0.5 caption">
+          <span>Research data summary, not a material certification or safety approval.</span>
+          <span className="hidden md:inline">Data: NASA Physical Sciences Informatics, BASS-II Summary Report, and cited NTRS documents.</span>
+          {data && <span className="ml-auto num">{data.tests.length.toLocaleString()} records</span>}
         </div>
       </footer>
-    </div>
-  )
-}
-
-function LoadingPanel() {
-  return (
-    <div className="flex-1 grid place-items-center">
-      <div className="text-center anim-fade-up">
-        <div className="relative w-16 h-16 mx-auto mb-5">
-          <div className="absolute inset-0 rounded-full border-2 border-edge" />
-          <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-cryo border-r-star animate-spin" />
-        </div>
-        <div className="label">Loading NASA PSI records</div>
-      </div>
     </div>
   )
 }

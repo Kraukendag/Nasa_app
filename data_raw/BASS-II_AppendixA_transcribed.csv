@@ -53,13 +53,13 @@ P6,Opposed,"HCl 0 > 0.9, steady burning until turned flow off, multiple pot sett
 P8,Opposed,"HCl 0.9 > 0.9, would not stay lit, tip of sample was flat",107
 P9,Opposed,"Fan pot 1.5 (5 cm/s), 0.9, 0.4, 0.36, 0.32, 0.3, 0.28 extinction at 0.28; HCL 4.7 > 4.5; flame did not leave conical portion behind, rather fuel was consumed but final sample shape was very irregular",107
 M1,Opposed,"Prolonged ignition, flame initially on both sides, after igniter off and flame moved away from end, bottom flame died and top flame became all blue and small; very slow propagation; changed flow from 10 to 8 cm/s and flame shrank to a circle; spread just over 1/3 of sample when we ran out of camera card, and put flame out by turning off flow",108
-M10,Opposed,"Long burn, quick ignition, flame in 40 s + 2nd on for another 10 to 15 s when it was shrinking; multiple flows for steady spreading; flame big at 17, so only left it there 3 min; other flows longer; flame self-extinguished at 8 cm/s after almost 10 min",108
+M10,Opposed,"Long burn, quick ignition, flame in 40 s + 2nd on for another 10 to 15 s when it was shrinking; multiple flows for steady spreading; flame big at 17, so only left it there 3 min; other flows longer; flame self-extinguished at 8 cm/s after almost 10 min; …",108
 M11,Opposed,"29-min burn; extinguished at 12 cm/s., HCl 0.5 > 5.0",108
 M12,Opposed,"Vigorous ignition led to trying to get flame under control; finally had about plateaus at pot = 0.35, 0.4, and again 0.35",108
 M13,Opposed,"Mild ignition at 10 cm/s; decreased flow down holding constant for 6 min at pot settings of 1.7, 1.0, and 0.55; finally extinguished by turning pot down to 0.3",108
 M14,Opposed,"Prolonged ignition, followed by flow reduction after flame moved away from igniter region and spread steadily; flame self-extinguished at an air reading of 9 cm/s.",108
 M15,Opposed,"Ignited and turned flow down to control flame size during end burning, then turned flow up to 20 cm/s and got steady spreading there, turned down flow to 15 and got spreading and slow extinction there.",108
-M16,Opposed,"Burned at decreasing flow down to 1 cm/s or so, still fine, at end of sample, turned up flow to 10 cm/s and flame got really long; turned it down but Alex reported some soot on the door and some on the heat sink",108
+M16,Opposed,"Burned at decreasing flow down to 1 cm/s or so, still fine, at end of sample, turned up flow to 10 cm/s and flame got really long; turned it down but Alex reported some soot on the door and some on the heat sink; …",108
 M17,Opposed,"30-min burn targeted constant flows of 10, 5, and 3; finally turned fan pot to 0 to extinguish. HCl 0.3 > 3.7",108
 M18,Opposed,"26-min burn; flow briefly at 15 cm/s but flame was too strong so turned down; HCl 0 > 3.1, extinguished 8 cm/s",108
 M19,Opposed,Burned with decreasing flows until it went out on its own at 5 cm/s,109
@@ -67,7 +67,7 @@ M2,Opposed,"Ignite at 20 cm/s, turn down to 15 cm/s after spread away from ignit
 M20,Opposed,"Flame took some time to establish, initially only on bottom of fuel; ignition at 10 cm/s (left 8 min) then flow down to 8 cm/s (flame out after 3 more minutes)",109
 M3,Opposed,Extinguished at 18 cm/s; HCl 0.6 > 2.6,109
 M4,Opposed,"Mild ignition at 10 cm/s; decreased flow down holding constant for 6 min at pot settings of 1.7, 1.0, and 0.55; finally extinguished by turning pot down to 0.3",109
-M5,Opposed,"Ignition was ~3 min per his verbal call down when we came back; flame already burning ~1/3 of sample, both sides, long and sooty; turned down to 10 cm/s, then further down in increments to 5 cm/s; extinguished at 5 cm/s after prolonged flashing",109
+M5,Opposed,"… ignition was ~3 min per his verbal call down when we came back; flame already burning ~1/3 of sample, both sides, long and sooty; … turned down to 10 cm/s, then further down in increments to 5 cm/s; extinguished at 5 cm/s after prolonged flashing; …",109
 M6,Opposed,"Aggressive ignition led to large flame initially; once flame settled down, we kept flow low and had two flow plateaus (pot 0.4 and 0.36); when flame reached end of sample it started backing up and spreading along the edges.",109
 M7,Opposed,18 min burn; burned entire sample; HCl 2.2 > 3.9,109
 M8,Opposed,"25-min burn; turned down flow to extinguish, went out at pot 0.4; HCl 0.4 > 4.6",109
@@ -96,7 +96,7 @@ O7,Stagnation,"Blowoff fan 97, HCl post 4.9",111
 O8a,Stagnation,"Quench at pot 0.31, HCL 4.8 to 5.9",111
 O8b,Stagnation,"Blowoff fan 78, HCl prepost 5.9 to 7.9",111
 O9,Stagnation,"Blowoff fan 68, HCl 7.5 to 9.3",111
-T1,,Compound Specific Analyzer-Combustion Products (CSA-CP) unit 1024; Carbon Dioxide Monitor (CDM) unit 1018; Prefill O2 reading = 20.9 percent; GN2 fill at maximum GN2 flow rate (pot = 10); flow velocity held constant,112
+T1,,Compound Specific Analyzer-Combustion Products (CSA-CP) unit 1024; Carbon Dioxide Monitor (CDM) unit 1018; Prefill O2 reading = 20.9 percent; GN2 fill … at maximum GN2 flow rate (pot = 10); … flow velocity held constant,112
 T10,Concurrent,Brief ignition but flame extinguished before spreading beyond igniter,112
 T11,Concurrent,"Burned completely, steady, HCl 0.3 to 0.9",112
 T12,Concurrent,Extinguished quickly,112

@@ -1,11 +1,12 @@
 // =============================================================================
 //  DATA LOADING AND THE FLEX MODEL
 // =============================================================================
-//  Fetches the six JSON files once at start-up. After that the site makes no
+//  Fetches the six JSON files once at start-up (literature.json holds the
+//  verified results from outside PSI, kept apart from the PSI rows). After that the site makes no
 //  network calls at all, so it works offline.
 // =============================================================================
 
-import type { Findings, FlexModel, Investigation, KnowledgeDoc, MaterialCard, TestRecord } from './types'
+import type { Findings, FlexModel, Investigation, Literature, MaterialCard, TestRecord } from './types'
 
 export interface Dataset {
   tests: TestRecord[]
@@ -13,7 +14,7 @@ export interface Dataset {
   materials: MaterialCard[]
   findings: Findings
   flexModel: FlexModel
-  knowledge: KnowledgeDoc[]
+  literature: Literature
 }
 
 export async function loadDataset(): Promise<Dataset> {
@@ -23,15 +24,15 @@ export async function loadDataset(): Promise<Dataset> {
     if (!response.ok) throw new Error(`Could not load ${name}`)
     return response.json() as Promise<T>
   }
-  const [tests, investigations, materials, findings, flexModel, knowledge] = await Promise.all([
+  const [tests, investigations, materials, findings, flexModel, literature] = await Promise.all([
     get<TestRecord[]>('tests.json'),
     get<Investigation[]>('investigations.json'),
     get<MaterialCard[]>('materials.json'),
     get<Findings>('findings.json'),
     get<FlexModel>('flex_model.json'),
-    get<KnowledgeDoc[]>('knowledge.json'),
+    get<Literature>('literature.json'),
   ])
-  return { tests, investigations, materials, findings, flexModel, knowledge }
+  return { tests, investigations, materials, findings, flexModel, literature }
 }
 
 /** Find the card for a material in a given state (silicone-as-solid and

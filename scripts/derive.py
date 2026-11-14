@@ -3,8 +3,7 @@
 # =============================================================================
 #  Everything the website shows ABOUT the data, computed from the data:
 #  material cards, investigation profiles, negative knowledge, the coverage
-#  grid and the open questions it implies, ranking features, key insights, and
-#  the search index behind "Ask the data".
+#  grid, ranking features and key insights.
 #
 #  Every count and range here is computed from the normalized test records.
 #  Text that comes from outside the 14 tables is marked with an evidence class:
@@ -185,6 +184,11 @@ def build_investigations(per_inv):
             "pressure_kpa_range": _range(kpa),
             "outcome_fraction": round(with_outcome / len(tests), 3) if tests else 0,
             "has_1g_reference": any(t["normalized"].get("has_1g_reference") for t in tests),
+            # Physical scale of the experiment, used by the ranking's "scale"
+            # criterion: large Cygnus burns > glovebox duct > small chamber.
+            "scale_class": ("large" if meta["platform"] == "Cygnus"
+                            else "glovebox" if meta["hardware"].startswith("MSG")
+                            else "cabin" if psi_id == "PSI-47" else "chamber"),
             "max_sample_length_cm": max([l for l in lengths if l], default=None),
             "embedded_notes": [r["normalized"].get("note_text") for r in records
                                if r["is_note"] and r["normalized"].get("note_text")],
@@ -393,44 +397,7 @@ def build_coverage(all_tests):
                     and t["normalized"].get("has_1g_reference"))
         grid[m] = {"cells": rows, "o2_not_recorded_0g": unknown, "one_g_references": one_g}
 
-    # Questions from empty cells, scored for Moon-base relevance with a
-    # formula the page displays:  3*[bin holds 30% O2] + 2*[bin above tested
-    # max] + 3*[lunar g] + 1*[Mars g] + 1*[material has 10+ tests].
-    questions = []
-    for m in materials:
-        for label, lo, hi in O2_BINS:
-            for g in GRAVITY:
-                if grid[m]["cells"][label][g] > 0 or g == "1 g":
-                    continue
-                parts = {
-                    "holds_moon_o2": 3 if lo <= 30 < hi else 0,
-                    "above_tested_max": 2 if lo >= 22.21 else 0,
-                    "lunar_gravity": 3 if g.startswith("0.16") else 0,
-                    "mars_gravity": 1 if g.startswith("0.38") else 0,
-                    "well_studied_material": 1 if counts[m] >= 10 else 0,
-                }
-                score = sum(parts.values())
-                if score < 3:
-                    continue
-                facilities = []
-                if g.startswith("0.16"):
-                    facilities = ["FM2 (lunar-gravity flammability, E3)", "LUCI (simulated lunar g, flown, not in PSI, E3)"]
-                elif g.startswith("0.38"):
-                    facilities = ["No dedicated facility identified in our sources"]
-                else:
-                    facilities = ["SoFIE on ISS (named in the BASS-II objectives, E1)"]
-                questions.append({
-                    "question": f"What happens to {m} at {label} oxygen in {g}?",
-                    "material": m, "o2_bin": label, "gravity": g,
-                    "score": score, "score_parts": parts,
-                    "evidence": f"0 tests in this cell; {counts[m]} {m} tests exist elsewhere in the grid.",
-                    "measure_with": "O2/CO2/CO sensors, radiometer and imaging, as used in BASS-II",
-                    "facilities": facilities,
-                    "hypothesis": g in ("0.16 g (Moon)", "0.38 g (Mars)"),
-                })
-    questions.sort(key=lambda q: (-q["score"], -counts[q["material"]], q["material"]))
     return {"o2_bins": [b[0] for b in O2_BINS], "gravity": GRAVITY, "grid": grid,
-            "questions": questions,
             "pressure_note": "No solid-fuel table in this dataset records chamber pressure, so reduced-"
                              "pressure coverage for solids cannot be shown; none is recorded."}
 
@@ -439,59 +406,30 @@ def build_coverage(all_tests):
 #  KEY INSIGHTS -- three facts for the landing page, computed
 # ---------------------------------------------------------------------------
 
-def build_key_insights(all_tests, max_solid_o2):
-    bass2 = [t for t in _real(all_tests) if t["psi_id"] == "PSI-25"]
-    ended = [t for t in bass2 if t["normalized"].get("outcome_class")]
-    low = [t for t in ended if t["normalized"]["outcome_class"] in ("extinguished_low_flow", "extinguished_flow_stopped")]
-    blow = [t for t in ended if t["normalized"]["outcome_class"] == "blowoff"]
+def build_key_insights(stats):
+    """Three findings for the home page. Each is a result, not a description
+    of the test protocol, and each names its source."""
     return [
-        {"id": "low_flow", "headline": f"{len(low)} of the {len(ended)} BASS-II tests with a recorded ending went out when the airflow was turned down or off",
-         "detail": f"In microgravity there is no buoyancy to feed a flame, so ventilation does it. "
-                   f"Turning the flow down starved {len(low)} flames; at the other end, {len(blow)} blew off at high flow.",
-         "psi_id": "PSI-25", "doi": "10.60555/4qc4-de67",
-         "source": "Outcomes transcribed from NASA/TM-20210011385 Appendix A"},
-        {"id": "silicone", "headline": "Silicone burned on Earth but barely ignited in space",
-         "detail": "SAFFIRE-II silicone samples left about 0 cm burned in microgravity; in normal gravity "
-                   "three of four burned completely or partly. Earth screening can misjudge materials in both directions.",
-         "psi_id": "PSI-99", "doi": "10.60555/2chp-m469", "source": "PSI-99 burn length columns"},
-        {"id": "moon_gap", "headline": f"No solid here was tested above {max_solid_o2:g}% oxygen. A Moon base plans 30%",
-         "detail": "Every solid-fuel test in this dataset sits below the oxygen level planned for a lunar "
-                   "habitat, and none records reduced pressure or lunar gravity.",
-         "psi_id": "PSI-25", "doi": "10.60555/4qc4-de67", "source": "Computed from all solid-fuel rows"},
+        {"id": "low_oxygen",
+         "headline": f"PMMA kept burning in microgravity at {stats['pmma_min_o2']}% oxygen",
+         "detail": (f"BASS-II test {stats['pmma_min_test']} (a PMMA rod) sustained a flame at {stats['pmma_min_o2']}% O2; "
+                    f"every attempt at {stats['pmma_fail_range']} failed. Earth screening can understate this: Olson (2004) gives "
+                    "the Earth oxygen limit for a cellulose fuel as 16.5%, yet flames survived at 14% under spacecraft-like "
+                    "ventilation of 5-20 cm/s."),
+         "psi_id": "PSI-25", "doi": "10.60555/4qc4-de67", "lit": ["OLSON2004", "BASS2_TM"],
+         "source": f"PSI-25 tests {stats['pmma_min_test']}, O12 (NASA/TM-20210011385 App. A); Olson, NASA/TM-2004-213114"},
+        {"id": "silicone",
+         "headline": "Silicone burned on Earth but barely in space",
+         "detail": ("All four SAFFIRE-II silicone samples left about 0 cm burned in microgravity; at 1 g two burned "
+                    "completely and one 7.6 cm. Earth testing can misjudge a material in either direction. Caveat: "
+                    "four samples, all near the oxygen limit (21.5-22.1% O2)."),
+         "psi_id": "PSI-99", "doi": "10.60555/2chp-m469", "lit": [],
+         "source": "PSI-99 SAFFIRE-II, samples 2-1 to 2-4, burn length columns"},
+        {"id": "lunar_g",
+         "headline": "Lunar-gravity flame data now exists, outside PSI",
+         "detail": ("LUCI (Blue Origin New Shepard, 4 Feb 2025) burned SIBAL at simulated lunar gravity: its flame tip "
+                    "spread at 1.1 mm/s against 2.8 mm/s at 1 g, yet it burned about 45 s longer before going out. "
+                    "PSI itself still holds no partial-gravity data."),
+         "psi_id": None, "doi": None, "lit": ["LUCI"],
+         "source": "Ferkul et al., ASGSR 2025, NTRS 20250010653"},
     ]
-
-
-# ---------------------------------------------------------------------------
-#  "ASK THE DATA" INDEX
-# ---------------------------------------------------------------------------
-
-def build_knowledge(investigations, materials, findings):
-    docs = []
-    for inv in investigations:
-        docs.append({"id": f"inv-{inv['psi_id']}", "kind": "investigation",
-                     "title": f"{inv['psi_id']} {inv['acronym']} - {inv['title']}",
-                     "text": " ".join(filter(None, [inv["summary"], inv.get("objectives"),
-                                                    "Variables: " + ", ".join(inv["variables_recorded"]),
-                                                    "Instruments: " + ", ".join(inv["sensors_evidenced"]),
-                                                    "Materials: " + ", ".join(inv["materials"][:20])])),
-                     "psi_id": inv["psi_id"], "doi": inv["doi"]})
-    for m in materials:
-        docs.append({"id": f"mat-{m['id']}", "kind": "material",
-                     "title": f"{m['name']} ({m['fuel_state']})",
-                     "text": m["summary"] + " Confidence: " + m["confidence"]["level"] + ". "
-                             + " ".join(v["note"] for v in m["mission_context"].values()),
-                     "psi_id": m["investigations"][0], "doi": None})
-    for k in findings["key_insights"]:
-        docs.append({"id": f"ins-{k['id']}", "kind": "insight", "title": k["headline"],
-                     "text": k["detail"], "psi_id": k["psi_id"], "doi": k["doi"]})
-    for i, s in enumerate(findings["surprises"]):
-        docs.append({"id": f"sur-{i}", "kind": "surprise", "title": s["title"], "text": s["text"],
-                     "psi_id": s["evidence"].get("psi_id"), "doi": s["evidence"].get("doi")})
-    for i, g in enumerate(findings["gaps"]):
-        docs.append({"id": f"gap-{i}", "kind": "gap", "title": "Coverage gap", "text": g,
-                     "psi_id": None, "doi": None})
-    for i, n in enumerate(findings["negative_knowledge"]):
-        docs.append({"id": f"neg-{i}", "kind": "negative", "title": n["title"],
-                     "text": n["detail"] + " Tests: " + ", ".join(str(x) for x in n["tests"][:12]),
-                     "psi_id": n["psi_id"], "doi": n["doi"]})
-    return docs

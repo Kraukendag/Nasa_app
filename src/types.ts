@@ -101,6 +101,7 @@ export interface Investigation {
   outcome_fraction: number
   has_1g_reference: boolean
   max_sample_length_cm: number | null
+  scale_class: 'large' | 'glovebox' | 'chamber' | 'cabin'
   embedded_notes: string[]
   anomaly_count: number
 }
@@ -139,15 +140,46 @@ export interface MaterialCard {
   confidence: { level: string; reason: string }
   anomaly_count: number
   summary: string
+  lowest_sustained_o2?: { o2: number; test: string } | null
+  failed_attempts?: { o2: number; test: string }[]
+  literature?: { points: LiteraturePoint[]; saffire: SaffireRow[] } | null
+  caveat?: string
 }
 
 export interface KeyInsight {
   id: string
   headline: string
   detail: string
-  psi_id: string
+  psi_id: string | null
   doi: string | null
+  /** Literature keys (see Literature.sources) this finding also cites. */
+  lit: string[]
   source: string
+}
+
+export interface ResearchQuestion {
+  id: string
+  theme: string
+  question: string
+  why: string
+  known: string
+  gap: string
+  answer_by: string
+  measure: string
+  refs: string[]
+  priority: 'high' | 'medium'
+}
+
+export interface LiteratureSource { title: string; authors: string; venue: string; ntrs: string; url: string }
+export interface LiteraturePoint { source: string; g: number; material: string; quantity: string; value: number; unit: string; compare_1g: number; where: string }
+export interface SaffireRow { sample: string; material: string; length_cm: number; flow_cm_s: number; direction: string; pressure_kpa: number; o2_percent: number }
+export interface Literature {
+  sources: Record<string, LiteratureSource>
+  points: LiteraturePoint[]
+  luci_notes: string[]
+  saffire_iv_vi: SaffireRow[]
+  statements: { source: string; text: string; where: string; g?: number[] }[]
+  note: string
 }
 
 export interface NegativeEntry {
@@ -160,19 +192,6 @@ export interface NegativeEntry {
   source: string | null
 }
 
-export interface OpenQuestion {
-  question: string
-  material: string
-  o2_bin: string
-  gravity: string
-  score: number
-  score_parts: Record<string, number>
-  evidence: string
-  measure_with: string
-  facilities: string[]
-  hypothesis: boolean
-}
-
 export interface Coverage {
   o2_bins: string[]
   gravity: string[]
@@ -181,7 +200,6 @@ export interface Coverage {
     o2_not_recorded_0g: number
     one_g_references: number
   }>
-  questions: OpenQuestion[]
   pressure_note: string
 }
 
@@ -194,6 +212,9 @@ export interface Findings {
   gaps: string[]
   negative_knowledge: NegativeEntry[]
   coverage: Coverage
+  research_questions: ResearchQuestion[]
+  spot_check: { checked: string[]; result: string; pages: number[] }
+  cross_check: { checked: number; agree: number; rule: string; disagree: { test: string; cell: string; category: string; report: string }[] }
   not_included: { name: string; psi_id: string | null; doi: string | null }[]
   anomaly_summary: Record<string, number>
   science_flag_summary: Record<string, number>
@@ -228,13 +249,4 @@ export interface FlexModel {
   source: { psi_id: string; doi: string }
 }
 
-export interface KnowledgeDoc {
-  id: string
-  kind: string
-  title: string
-  text: string
-  psi_id: string | null
-  doi: string | null
-}
-
-export type TabId = 'match' | 'lab' | 'library' | 'insights' | 'about'
+export type PageId = 'home' | 'lab' | 'data' | 'findings' | 'ranking' | 'questions' | 'pipeline' | 'about'

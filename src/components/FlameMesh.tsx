@@ -1,14 +1,13 @@
 // =============================================================================
-//  FLAME MESH
+//  FLAME
 // =============================================================================
-//  Wraps the procedural flame shader in something the rest of the app can drop
-//  into a 3D scene. Used by both the 3D Match page and the Experiment Lab, so
-//  the fire looks the same everywhere.
+//  One procedural flame (see src/three/flameShader.ts) on a quad that turns to
+//  face the camera around its vertical axis only. Scenes place one or many of
+//  these: a single plume on a match, a row of them along the flame front of a
+//  burning sheet, a ring around a sphere, a shell around a droplet.
 //
-//  The flame is a flat quad that always turns to face the camera. That sounds
-//  like a shortcut, but fire is close to radially symmetric, so a camera-facing
-//  sheet reads as a volume from every angle — and it costs a tiny fraction of
-//  what a particle cloud or a volume raymarch would.
+//  Every parameter eases toward its target each frame, so a change of gravity,
+//  airflow or ignition state reads as a transition rather than a jump.
 // =============================================================================
 
 import { Billboard } from '@react-three/drei'
@@ -17,123 +16,93 @@ import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { flameFragmentShader, flameVertexShader, makeFlameUniforms } from '../three/flameShader'
 
-export interface FlameMeshProps {
-  /** Is it burning? Animates in and out rather than popping. */
+export interface FlameProps {
   lit: boolean
-  /** true = Earth (1 g), false = microgravity (0 g). */
-  gravityOn: boolean
-  /** 0-1, how vigorous the flame is. The Lab drives this from oxygen. */
+  /** 0 = plume (teardrop), 1 = shell around the fuel. Values between blend. */
+  shape?: number
+  /** Plume length. ~0.2 compact, 1 = buoyant flame, 1.4 = long jet. */
+  stretch?: number
+  width?: number
+  /** 0 = steady microgravity flame, 1 = buoyant flicker. */
+  flicker?: number
+  /** 0 = clean blue, 1 = sooty yellow. */
+  sooty?: number
   intensity?: number
-  /** Airflow along the WORLD x-axis, -1 to 1. Positive pushes the flame
-   *  toward +x. It stays tied to the world as you orbit the camera. */
-  flow?: number
-  /** 0 = clean blue burn, 1 = sooty yellow tip. */
-  soot?: number
-  /** World size of the flame quad. */
+  /** Overall brightness; microgravity flames are dimmer. */
+  dim?: number
+  /** Lean along the WORLD x-axis, -1..1. */
+  lean?: number
+  /** Point the plume downward instead of up (e.g. a flame pushed ahead of the
+   *  front by downward airflow). */
+  flip?: boolean
   scale?: number
   position?: [number, number, number]
-  /** Adds the flickering light the flame casts on its surroundings. */
   castLight?: boolean
+  /** Optional per-frame multiplier (0..1) set by an animating parent, e.g. the
+   *  spread clock fading a flame out at extinction without re-rendering. */
+  aliveRef?: { current: number }
 }
 
 export default function FlameMesh({
-  lit,
-  gravityOn,
-  intensity = 0.5,
-  flow = 0,
-  soot = 1,
-  scale = 1,
-  position = [0, 0, 0],
-  castLight = true,
-}: FlameMeshProps) {
+  lit, shape = 0, stretch = 1, width = 1, flicker = 1, sooty = 1, intensity = 0.6, dim = 1,
+  lean = 0, flip = false, scale = 1, position = [0, 0, 0], castLight = false, aliveRef,
+}: FlameProps) {
   const uniforms = useMemo(makeFlameUniforms, [])
   const light = useRef<THREE.PointLight>(null)
-  const group = useRef<THREE.Group>(null)
-
-  // Values we ease towards rather than snapping to, so every change reads as
-  // a transition. Kept in a ref because they change every frame and must not
-  // trigger React re-renders.
-  const eased = useRef({ alive: 0, gravity: 1, intensity: 0.5, flow: 0 })
+  const e = useRef({ alive: 0, shape, stretch, width, flicker, sooty, intensity, dim, lean })
 
   useFrame((state, delta) => {
-    const step = (from: number, to: number, speed: number) =>
-      from + (to - from) * Math.min(1, delta * speed)
+    const k = (speed: number) => Math.min(1, delta * speed)
+    const c = e.current
+    const target = (lit ? 1 : 0) * (aliveRef ? aliveRef.current : 1)
+    c.alive += (target - c.alive) * k(target > c.alive ? 4 : 6)
+    c.shape += (shape - c.shape) * k(2.5)
+    c.stretch += (stretch - c.stretch) * k(2.5)
+    c.width += (width - c.width) * k(2.5)
+    c.flicker += (flicker - c.flicker) * k(2.5)
+    c.sooty += (sooty - c.sooty) * k(2.5)
+    c.intensity += (intensity - c.intensity) * k(3)
+    c.dim += (dim - c.dim) * k(3)
+    c.lean += (lean - c.lean) * k(3)
 
-    const e = eased.current
-    e.alive     = step(e.alive,     lit ? 1 : 0,       lit ? 4.5 : 7)
-    e.gravity   = step(e.gravity,   gravityOn ? 1 : 0, 2.6)
-    e.intensity = step(e.intensity, intensity,         3.5)
-    e.flow      = step(e.flow,      flow,              3.0)
-
-    uniforms.uTime.value      = state.clock.elapsedTime
-    uniforms.uAlive.value     = e.alive
-    uniforms.uGravity.value   = e.gravity
-    uniforms.uIntensity.value = e.intensity
-    // The flame quad only turns around its vertical axis, so its sideways
-    // direction is the camera's horizontal right vector. Projecting the world
-    // flow onto that vector keeps the lean pointing the same way in the WORLD
-    // as you orbit; seen end-on (flow toward the camera) it shrinks to zero,
-    // exactly as a real bent flame would look. An earlier version leaned in
-    // screen space, so the "airflow" swung round with the camera.
+    // Project the world-x lean onto the quad's sideways axis (the camera's
+    // horizontal right vector), so the lean stays fixed in the world as the
+    // camera orbits. A flipped plume leans the other way on screen.
     const m = state.camera.matrixWorld.elements
-    const rx = m[0], rz = m[2]
-    const len = Math.hypot(rx, rz) || 1
-    uniforms.uFlow.value      = e.flow * (rx / len)
-    uniforms.uSoot.value      = soot
+    const len = Math.hypot(m[0], m[2]) || 1
+    const u = uniforms
+    u.uTime.value = state.clock.elapsedTime
+    u.uAlive.value = c.alive
+    u.uShape.value = c.shape
+    u.uStretch.value = c.stretch
+    u.uWidth.value = c.width
+    u.uFlicker.value = c.flicker
+    u.uSooty.value = c.sooty
+    u.uIntensity.value = c.intensity
+    u.uDim.value = c.dim
+    u.uLean.value = c.lean * (m[0] / len) * (flip ? -1 : 1)
 
-    // Scale UNIFORMLY. Squashing the quad vertically under 0 g used to turn
-    // the round microgravity flame into an oval. The shader now handles the
-    // height change itself, so the quad never needs distorting.
-    if (group.current) group.current.scale.setScalar(scale)
-
-    // Light the surroundings. Flicker under gravity; hold almost steady
-    // without it, because a microgravity diffusion flame barely moves.
     if (light.current) {
       const t = state.clock.elapsedTime
-      const flicker = e.gravity > 0.5
-        ? 1 + Math.sin(t * 12.3) * 0.09 + Math.sin(t * 27.1) * 0.05
-        : 1 + Math.sin(t * 2.1) * 0.012
-      light.current.intensity = (gravityOn ? 9 : 4.5) * e.alive * flicker * scale
-      light.current.color.setRGB(
-        THREE.MathUtils.lerp(0.45, 1.0, e.gravity),
-        THREE.MathUtils.lerp(0.72, 0.55, e.gravity),
-        THREE.MathUtils.lerp(1.0, 0.25, e.gravity),
-      )
+      const fl = 1 + (Math.sin(t * 12.3) * 0.09 + Math.sin(t * 27.1) * 0.05) * c.flicker
+      light.current.intensity = 6 * c.alive * fl * c.dim * scale
+      light.current.color.setRGB(0.45 + 0.55 * c.sooty, 0.72 - 0.17 * c.sooty, 1.0 - 0.75 * c.sooty)
     }
   })
 
   return (
     <group position={position}>
-      {castLight && (
-        <pointLight
-          ref={light}
-          position={[0, scale * 0.3, 0]}
-          distance={scale * 11}
-          decay={2}
-        />
-      )}
-      {/* lockX + lockZ: the quad turns to face you only around its vertical
-          axis, so "up" stays up and the lean stays in world space. */}
+      {castLight && <pointLight ref={light} position={[0, (flip ? -1 : 1) * scale * 0.3, 0]} distance={scale * 10} decay={2} />}
+      {/* lockX + lockZ: turns to face you around its vertical axis only. */}
       <Billboard lockX lockZ>
-        {/* A plane is centred on its own origin, which would bury half the
-            flame in the fuel. So we scale this group and offset the quad
-            upward by half its height inside it — that puts the pivot at the
-            BASE of the flame, so it grows upward from the wick. */}
-        <group ref={group}>
-          {/* 0.5 lifts the quad so its bottom edge sits at the origin; the
-              extra -0.22 matches BASE in the shader, so the origin of this
-              component is exactly where the fuel is. */}
+        <group scale={scale} rotation={[0, 0, flip ? Math.PI : 0]}>
+          {/* The quad's pivot is the flame BASE (0.22 up the quad, matching
+              BASE in the shader), so it grows out of the fuel. */}
           <mesh position={[0, 0.5 - 0.22, 0]}>
-            <planeGeometry args={[1, 1, 1, 1]} />
-            <shaderMaterial
-              vertexShader={flameVertexShader}
-              fragmentShader={flameFragmentShader}
-              uniforms={uniforms}
-              transparent
-              depthWrite={false}
-              blending={THREE.AdditiveBlending}
-              side={THREE.DoubleSide}
-            />
+            <planeGeometry args={[1, 1]} />
+            <shaderMaterial vertexShader={flameVertexShader} fragmentShader={flameFragmentShader}
+                            uniforms={uniforms} transparent depthWrite={false}
+                            blending={THREE.AdditiveBlending} side={THREE.DoubleSide} />
           </mesh>
         </group>
       </Billboard>

@@ -467,8 +467,8 @@ def load_psi20():
             # and the full list is kept for display and filtering.
             o2_percent=levels[0] if len(levels) == 1 else None,
             o2_display="; ".join(f"{v:g}" for v in levels) if levels else None,
-            outcome=f"{int(ignited)} flames ignited" if ignited is not None else None,
-            outcome_class="ignition_count" if ignited is not None else None,
+            # "10 flames ignited" is a daily COUNT, not how a test ended, so it
+            # is kept as flames_ignited and shown as a measurement, not an outcome.
         )
         normalized["o2_levels_tested"] = levels
         normalized["burner_size_mm"] = to_float(row.get("Burner Size (mm)"))
@@ -502,8 +502,6 @@ def load_psi22():
         normalized = blank_normalized(
             fuel=label, material=label, material_raw=fuel_raw, substance=substance,
             fuel_fraction=fraction, fuel_state="gas", gravity="0g",
-            outcome=f"{int(flames)} flames ignited" if flames is not None else None,
-            outcome_class="ignition_count" if flames is not None else None,
         )
         normalized["mesh_polarity"] = clean(row.get("Mesh Polarity"))
         normalized["fuel_concentration"] = clean(row.get("Fuel Conc"))

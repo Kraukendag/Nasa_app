@@ -16,6 +16,8 @@
 #    derive.py      material cards, investigation profiles, negative
 #                   knowledge, coverage grid, open questions, search index
 #    flex_model.py  the FLEX droplet outcome model and its honest metrics
+#    literature.py  verified results from outside PSI (LUCI, Saffire IV-VI...)
+#    research_questions.py  the team's open research questions
 # =============================================================================
 
 import json
@@ -24,7 +26,9 @@ from collections import Counter
 
 import derive
 from flex_model import build_flex_model
+from literature import build_literature
 from loaders import LOADERS, OUTCOME_LABELS
+from research_questions import build_research_questions
 
 OUT_DIR = "public/data"
 EXPECTED_TOTAL_ROWS = 1450
@@ -127,6 +131,7 @@ def main():
                 and "implausible_o2_reading" not in t["anomalies"]]
     max_solid_o2 = max(solid_o2)
 
+    stats = compute_stats(real, per_inv, max_solid_o2)
     investigations = derive.build_investigations(per_inv)
     doi_of = {i["psi_id"]: i["doi"] for i in investigations}
     materials = derive.build_materials(all_tests)
@@ -159,7 +164,7 @@ def main():
                      "but their results are not in PSI. The idea that flame spread peaks near lunar gravity "
                      "is a hypothesis here; NASA's FM2 experiment is designed to test it (E3)."),
         },
-        "key_insights": derive.build_key_insights(all_tests, max_solid_o2),
+        "key_insights": derive.build_key_insights(stats),
         "surprises": [
             {"id": "silicone_reversal", "title": "Silicone burns on Earth but barely in space",
              "text": ("In SAFFIRE-II, all four silicone samples left about 0 cm burned in microgravity. In "
@@ -186,9 +191,9 @@ def main():
         "gaps": [
             "This dataset has no combustion data at any gravity between 0 g and 1 g. Partial-gravity flame "
             "tests exist from parabolic flights and LUCI, but not in PSI.",
-            f"No solid fuel in this dataset was tested above {max_solid_o2:g}% oxygen, while a lunar habitat "
-            "is planned at about 30%. Later Saffire flights (IV-VI) studied other atmospheres; their tables are "
-            "not included here.",
+            f"No solid fuel in the PSI tables was tested above {max_solid_o2:g}% oxygen, while a lunar habitat "
+            "is planned at about 30%. Saffire V and VI (outside PSI) did fly at 26.2-31.0% O2 and 54-71 kPa; see "
+            "Findings > Beyond PSI.",
             "No solid-fuel table in this dataset records chamber pressure, so no reduced-pressure solid test "
             "is recorded.",
             "All SAME-R smoke data comes from heated, non-flaming samples: there are no measurements of smoke "
@@ -199,6 +204,14 @@ def main():
         ],
         "negative_knowledge": derive.build_negative_knowledge(all_tests, doi_of),
         "coverage": coverage,
+        "research_questions": build_research_questions(stats),
+        "spot_check": {
+            "checked": ["B18", "B21", "B9", "P22a", "P5", "M2", "M5", "T27", "T29", "T7"],
+            "result": "10 of 10 match the report pages in content. One (M5) was a shortened quote without "
+                      "ellipses; it and three other shortened notes (M10, M16, T1) are now marked with '…'.",
+            "pages": [104, 107, 109, 113],
+        },
+        "cross_check": bass2_cross_check(all_tests),
         "not_included": derive.NOT_INCLUDED,
         "anomaly_summary": dict(Counter(a for t in all_tests for a in t["anomalies"])),
         "science_flag_summary": dict(Counter(f for t in all_tests for f in t["science_flags"])),
@@ -210,12 +223,16 @@ def main():
                                "Each record cites its page so it can be checked; the summary category is "
                                "this project's reading of NASA's words, which are shown verbatim."),
     }
-    knowledge = derive.build_knowledge(investigations, materials, findings)
+    literature = build_literature()
+    attach_material_context(materials, real, literature)
     flex = build_flex_model(per_inv["PSI-69"])
 
     outputs = {"investigations.json": investigations, "tests.json": all_tests,
                "materials.json": materials, "findings.json": findings,
-               "flex_model.json": flex, "knowledge.json": knowledge}
+               "flex_model.json": flex, "literature.json": literature}
+    stale = os.path.join(OUT_DIR, "knowledge.json")       # "Ask the data" was removed
+    if os.path.exists(stale):
+        os.remove(stale)
     print("-" * 72)
     for name, payload in outputs.items():
         path = os.path.join(OUT_DIR, name)
@@ -231,11 +248,135 @@ def main():
     with_outcome = sum(1 for t in real if t["normalized"].get("outcome_class"))
     print(f"  Tests with a recorded outcome: {with_outcome} of {len(real)}")
     print(f"  Material cards: {len(materials)}   Negative-knowledge entries: {len(findings['negative_knowledge'])}"
-          f"   Open questions: {len(coverage['questions'])}")
+          f"   Research questions: {len(findings['research_questions'])}")
     print(f"  Data-quality flags: {sum(findings['anomaly_summary'].values())} across "
           f"{len(findings['anomaly_summary'])} types; science flags: {sum(findings['science_flag_summary'].values())}")
     print(f"  Highest solid-fuel oxygen in this dataset: {max_solid_o2:g}%")
     print("=" * 72)
+
+
+def bass2_cross_check(all_tests):
+    """Check the AI-assisted transcription against an independent source.
+
+    Some BASS-II rows in the PSI table write how the run ended in their own
+    "Air display" cell ("... down to ext", "10 blowoff"). Those words were typed
+    by the crew support team, not taken from the report, so they can test the
+    category we derived from the report's matrix notes:
+        cell mentions "blowoff"  ->  category must be blowoff
+        cell mentions "ext"      ->  category must be one of the "went out" kinds
+    """
+    went_out = {"extinguished_low_flow", "extinguished_flow_stopped", "extinguished", "self_extinguished"}
+    checked, disagree = [], []
+    for t in all_tests:
+        if t["psi_id"] != "PSI-25" or t["is_note"]:
+            continue
+        cell = (t["raw"].get("Air display") or "").lower()
+        cls = t["normalized"]["outcome_class"]
+        if "blowoff" in cell:
+            expected = {"blowoff"}
+        elif "ext" in cell:
+            expected = went_out
+        else:
+            continue
+        checked.append(t["test_number"])
+        if cls not in expected:
+            disagree.append({"test": t["test_number"], "cell": t["raw"].get("Air display"),
+                             "category": cls, "report": t["normalized"]["outcome_text"]})
+    return {"checked": len(checked), "agree": len(checked) - len(disagree), "disagree": disagree,
+            "rule": "PSI table 'Air display' cell says 'blowoff' or 'ext'; the category from the report must say the same."}
+
+
+# Endings that prove a flame was ESTABLISHED before it ended. The generic
+# "extinguished" class is left out on purpose: NASA's note for it is often
+# "Extinguished quickly", which does not show a sustained flame.
+SUSTAINED = {"extinguished_low_flow", "extinguished_flow_stopped", "self_extinguished",
+             "blowoff", "burned_entire", "burned_sustained"}
+
+
+def compute_stats(real, per_inv, max_solid_o2):
+    """Every number quoted in the insights and research questions, computed
+    here from the rows so the prose can never drift from the data."""
+    import statistics as st
+    b2 = [t for t in real if t["psi_id"] == "PSI-25" and "implausible_o2_reading" not in t["anomalies"]]
+    n = lambda t: t["normalized"]
+    pmma_ok = sorted((n(t)["o2_percent"], t["test_number"]) for t in b2
+                     if n(t)["material"] == "PMMA" and n(t)["outcome_class"] in SUSTAINED)
+    pmma_fail = sorted(n(t)["o2_percent"] for t in b2 if n(t)["material"] == "PMMA"
+                       and n(t)["outcome_class"] in ("no_sustained_flame", "no_ignition")
+                       and n(t)["o2_percent"] < pmma_ok[0][0])
+    cls = lambda c: [t for t in b2 if n(t)["outcome_class"] == c]
+    drops = [n(t)["o2_percent"] - n(t)["o2_final_percent"] for t in b2 if n(t)["o2_final_percent"] is not None]
+    co = max((n(t)["co_final_ppm"], t["test_number"]) for t in b2 if n(t)["co_final_ppm"] is not None)
+    fx = [t for t in real if t["psi_id"] == "PSI-69"]
+    ext = [n(t)["extinction_d_mm"] for t in fx if n(t)["extinction_d_mm"]]
+    kpa = [n(t)["pressure_kpa"] for t in fx if n(t)["pressure_kpa"]]
+    def ext_share(rows):
+        rows = [t for t in rows if n(t)["outcome_class"]]
+        return 100 * sum(n(t)["outcome_class"] == "Extinction" for t in rows) / max(1, len(rows))
+    co2 = [t for t in fx if n(t)["co2_mole_fraction"]]
+    he = [t for t in fx if n(t)["he_mole_fraction"]]
+    neither = [t for t in fx if not n(t)["co2_mole_fraction"] and not n(t)["he_mole_fraction"]]
+    cfig = [t for t in real if t["psi_id"] == "PSI-159"]
+    butane = [t for t in cfig if n(t)["material"] == "Butane (30%)"]
+    cool = [t for t in cfig if n(t).get("cool_flame") is True]
+    samer = [t for t in real if t["psi_id"] == "PSI-101"]
+    s1 = {t["test_number"]: n(t)["burn_time_s"] for t in real if t["psi_id"] == "PSI-98"}
+    watts = sorted({n(t)["ignition_power_w"] for t in real if t["psi_id"] in ("PSI-98", "PSI-99") and n(t).get("ignition_power_w")})
+    selfx = [t["test_number"] for t in cls("self_extinguished")]
+    widths = sorted({n(t)["width_mm"] for t in b2 if n(t)["width_mm"]})
+    return {
+        "max_solid_o2": max_solid_o2,
+        "pmma_min_o2": pmma_ok[0][0], "pmma_min_test": pmma_ok[0][1],
+        "pmma_fail_range": f"{pmma_fail[0]:g}-{pmma_fail[-1]:g}% O2",
+        "nomex_fail": sum(1 for t in b2 if n(t)["material"] == "Nomex" and n(t)["outcome_class"] == "no_sustained_flame"),
+        "flow_stopped": len(cls("extinguished_flow_stopped")), "low_flow": len(cls("extinguished_low_flow")),
+        "blowoff": len(cls("blowoff")), "self_ext_n": len(selfx), "self_ext_ids": ", ".join(selfx),
+        "o2_drop_median": st.median(drops), "o2_drop_max": max(drops),
+        "co_max": co[0], "co_max_test": co[1],
+        "stagnation_n": sum(1 for t in b2 if n(t)["flow_direction"] == "stagnation"),
+        "bass2_widths": " and ".join(f"{w / 10:g} cm" for w in widths),
+        "flex_n": len(fx), "flex_co2_n": len(co2), "flex_he_n": len(he),
+        "flex_kpa_min": min(kpa), "flex_kpa_max": max(kpa),
+        "dext_min": min(ext), "dext_max": max(ext), "dext_median": st.median(ext),
+        "ext_co2": ext_share(co2), "ext_he": ext_share(he), "ext_none": ext_share(neither),
+        "territory_n": sum(1 for t in fx if "cool_flame_territory" in t["science_flags"]),
+        "cfig_n": len(cfig), "butane_total": len(butane),
+        "butane_fail": sum(1 for t in butane if n(t)["outcome_class"] == "no_ignition_gas"),
+        "cool_n": len(cool), "cool_fuel": ", ".join(sorted({n(t)["material"] for t in cool})),
+        "cool_kpa": ", ".join(sorted({f"{n(t)['pressure_kpa']:.0f}" for t in cool})),
+        "cool_o2": f"{min(n(t)['o2_percent'] for t in cool):.1f}-{max(n(t)['o2_percent'] for t in cool):.1f}%",
+        "samer_n": len(samer), "rt_min": min(n(t)["rt_r0"] for t in samer), "rt_max": max(n(t)["rt_r0"] for t in samer),
+        "aging_max": max(n(t)["net_aging_time_s"] or 0 for t in samer),
+        "saffire1_s1": s1.get("S1"), "saffire1_s2": s1.get("S2"),
+        "saffire_w": ", ".join(f"{w:g}" for w in watts),
+        "daft_n": sum(1 for t in real if t["psi_id"] == "PSI-47"),
+        "bass_n": sum(1 for t in real if t["psi_id"] == "PSI-26"),
+    }
+
+
+def attach_material_context(materials, real, literature):
+    """Extra evidence on the material cards: the lowest oxygen at which a
+    flame was sustained in BASS-II, and verified literature rows."""
+    n = lambda t: t["normalized"]
+    b2 = [t for t in real if t["psi_id"] == "PSI-25" and "implausible_o2_reading" not in t["anomalies"]]
+    lit_for = {
+        "PMMA": {"points": [p for p in literature["points"] if p["material"] == "PMMA"],
+                 "saffire": [r for r in literature["saffire_iv_vi"] if "PMMA" in r["material"]]},
+        "SIBAL": {"points": [p for p in literature["points"] if p["material"] == "SIBAL"],
+                  "saffire": [r for r in literature["saffire_iv_vi"] if "SIBAL" in r["material"]]},
+    }
+    for m in materials:
+        if m["fuel_state"] != "solid":
+            continue
+        ok = sorted((n(t)["o2_percent"], t["test_number"]) for t in b2
+                    if n(t)["material"] == m["name"] and n(t)["outcome_class"] in SUSTAINED)
+        bad = sorted((n(t)["o2_percent"], t["test_number"]) for t in b2
+                     if n(t)["material"] == m["name"] and n(t)["outcome_class"] in ("no_sustained_flame", "no_ignition"))
+        m["lowest_sustained_o2"] = {"o2": ok[0][0], "test": ok[0][1]} if ok else None
+        m["failed_attempts"] = [{"o2": o, "test": t} for o, t in bad]
+        m["literature"] = lit_for.get(m["name"])
+        if m["name"] == "Silicone":
+            m["caveat"] = "Four samples, all near the oxygen limit (21.5-22.1% O2)."
 
 
 if __name__ == "__main__":

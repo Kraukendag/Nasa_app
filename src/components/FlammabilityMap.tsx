@@ -1,130 +1,99 @@
 // =============================================================================
 //  FLAMMABILITY MAP  (solid materials)
 // =============================================================================
-//  Every BASS-II and SAFFIRE test of the chosen material, placed by its oxygen
-//  (up) and the airflows it was run at (across). A BASS-II test that stepped
-//  its airflow is drawn as a line from its lowest to its highest recorded
-//  reading; the marker shows how it ended:
-//
-//    blue  ▼  at the LOW end  -> went out as the airflow was turned down / off
-//    orange ▲ at the HIGH end -> blew off as the airflow was turned up
-//    aqua  ●                  -> kept burning across its whole range
-//    grey  ○                  -> never established a flame / ending not stated
-//
-//  Nothing here is fitted or interpolated: there is no boundary line, only the
-//  recorded tests. Where flames went out at low flow and where they blew off
-//  at high flow is visible in the points themselves.
+//  Every recorded BASS-II and SAFFIRE test of the chosen material, by oxygen
+//  (up) and airflow (across). A BASS-II test that stepped its airflow is a line
+//  from its lowest to its highest recorded anemometer reading; the marker
+//  shows how it ended:
+//      ▼ blue    went out (airflow turned down or off, or self-extinguished)
+//      ▲ orange  blew off as airflow was turned up
+//      ● green   kept burning across its range, or burned the whole sample
+//      ○ grey    never established a flame, or ending not stated
+//  No boundary is fitted. The points are the evidence.
 // =============================================================================
 
 import { useMemo, useState } from 'react'
 import type { TestRecord } from '../types'
 
-const C = { low: '#3987e5', blow: '#d95926', burn: '#199e70', none: '#7D8DA6' }
-
+// First three categorical slots of the validated palette (light mode): they
+// pass the all-pairs colour-vision checks; shapes carry identity as well.
+const C = { low: '#2a78d6', blow: '#eb6834', burn: '#1baf7a', none: '#8a8f99' }
 type Kind = 'low' | 'blow' | 'burn' | 'none'
 
-function kindOf(cls: string | null): Kind {
+export function kindOf(cls: string | null): Kind {
   if (!cls) return 'none'
   if (['extinguished_low_flow', 'extinguished_flow_stopped', 'self_extinguished', 'extinguished'].includes(cls)) return 'low'
   if (cls === 'blowoff') return 'blow'
   if (['burned_entire', 'burned_sustained', 'partial_burn'].includes(cls)) return 'burn'
   return 'none'
 }
-
 const LABEL: Record<Kind, string> = {
-  low: 'Went out (airflow down or off)',
-  blow: 'Blew off (airflow up)',
-  burn: 'Kept burning',
-  none: 'No sustained flame / not stated',
+  low: 'Went out (airflow down/off, or by itself)', blow: 'Blew off (airflow up)',
+  burn: 'Kept burning / burned through', none: 'No sustained flame, or not stated',
+}
+
+function Marker({ k, x, y, size = 1 }: { k: Kind; x: number; y: number; size?: number }) {
+  const s = 5 * size
+  if (k === 'low') return <path d={`M${x - s},${y - s * 0.75} L${x + s},${y - s * 0.75} L${x},${y + s} Z`} fill={C.low} stroke="#fff" strokeWidth={1} />
+  if (k === 'blow') return <path d={`M${x - s},${y + s * 0.75} L${x + s},${y + s * 0.75} L${x},${y - s} Z`} fill={C.blow} stroke="#fff" strokeWidth={1} />
+  if (k === 'burn') return <circle cx={x} cy={y} r={s * 0.85} fill={C.burn} stroke="#fff" strokeWidth={1} />
+  return <circle cx={x} cy={y} r={s * 0.75} fill="#fff" stroke={C.none} strokeWidth={1.5} />
 }
 
 export default function FlammabilityMap({ tests, highlight, selectedO2, selectedFlow }: {
-  tests: TestRecord[]
-  highlight: Set<string>
-  selectedO2: number | null
-  selectedFlow: number | null
+  tests: TestRecord[]; highlight: Set<string>; selectedO2: number | null; selectedFlow: number | null
 }) {
   const [hover, setHover] = useState<TestRecord | null>(null)
-
   const pts = useMemo(() => tests.filter((t) => t.normalized.o2_percent != null
     && (t.normalized.flow_min_cm_s != null || t.normalized.flow_cm_s != null)
     && !t.anomalies.includes('implausible_o2_reading')), [tests])
+  if (pts.length < 2) return <div className="p-6 caption">Not enough tests with both oxygen and airflow recorded to draw a map for this material.</div>
 
-  if (pts.length < 3) return null
-
-  const W = 300, H = 190, L = 34, R = 10, T = 10, B = 28
+  const W = 640, H = 340, L = 46, R = 16, T = 16, B = 40
   const lo = (t: TestRecord) => t.normalized.flow_min_cm_s ?? t.normalized.flow_cm_s ?? 0
   const hi = (t: TestRecord) => t.normalized.flow_max_cm_s ?? t.normalized.flow_cm_s ?? 0
-  const xMax = Math.max(10, ...pts.map(hi)) * 1.05
-  const o2s = pts.map((t) => t.normalized.o2_percent as number)
-  const yMin = Math.floor(Math.min(...o2s) - 0.5), yMax = Math.ceil(Math.max(...o2s) + 0.5)
+  const xMax = Math.max(10, ...pts.map(hi)) * 1.06
+  const o2 = pts.map((t) => t.normalized.o2_percent as number)
+  const yMin = Math.floor(Math.min(...o2) - 0.6), yMax = Math.ceil(Math.max(...o2) + 0.6)
   const x = (v: number) => L + (v / xMax) * (W - L - R)
   const y = (v: number) => T + (1 - (v - yMin) / (yMax - yMin)) * (H - T - B)
-  const xTicks = [0, 10, 20, 30, 40, 50].filter((v) => v <= xMax)
-  const yTicks: number[] = []
-  for (let v = Math.ceil(yMin); v <= yMax; v += yMax - yMin > 6 ? 2 : 1) yTicks.push(v)
+  const xt = [0, 5, 10, 20, 30, 40, 50].filter((v) => v <= xMax)
+  const yt: number[] = []; for (let v = Math.ceil(yMin); v <= yMax; v += yMax - yMin > 7 ? 2 : 1) yt.push(v)
 
   return (
-    <div className="relative">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img"
-           aria-label="Oxygen versus airflow for each recorded test, marked by how it ended">
-        {/* Recessive grid */}
-        {yTicks.map((v) => (
-          <g key={`y${v}`}>
-            <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke="#1E2D44" strokeWidth={1} />
-            <text x={L - 5} y={y(v) + 3} textAnchor="end" fontSize={8} fill="#7D8DA6">{v}%</text>
-          </g>
-        ))}
-        {xTicks.map((v) => (
-          <text key={`x${v}`} x={x(v)} y={H - B + 12} textAnchor="middle" fontSize={8} fill="#7D8DA6">{v}</text>
-        ))}
-        <text x={(L + W - R) / 2} y={H - 3} textAnchor="middle" fontSize={8} fill="#7D8DA6">airflow, cm/s (recorded readings)</text>
-
-        {/* The user's current choice, as a crosshair */}
-        {selectedO2 != null && <line x1={L} x2={W - R} y1={y(selectedO2)} y2={y(selectedO2)} stroke="#FBB03B" strokeDasharray="3 3" strokeWidth={1} opacity={0.7} />}
-        {selectedFlow != null && <line x1={x(selectedFlow)} x2={x(selectedFlow)} y1={T} y2={H - B} stroke="#FBB03B" strokeDasharray="3 3" strokeWidth={1} opacity={0.7} />}
-
+    <div className="relative px-3 pt-3">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Oxygen versus airflow for each recorded test, marked by how it ended">
+        {yt.map((v) => (<g key={v}><line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke="#ECEAE3" /><text x={L - 8} y={y(v) + 4} textAnchor="end" fontSize={12} fill="#646B78">{v}%</text></g>))}
+        {xt.map((v) => (<g key={v}><line x1={x(v)} x2={x(v)} y1={T} y2={H - B} stroke="#F2F0EA" /><text x={x(v)} y={H - B + 18} textAnchor="middle" fontSize={12} fill="#646B78">{v}</text></g>))}
+        <text x={(L + W - R) / 2} y={H - 4} textAnchor="middle" fontSize={12.5} fill="#3D424C">Airflow, cm/s (recorded anemometer readings)</text>
+        <text transform={`translate(13 ${(T + H - B) / 2}) rotate(-90)`} textAnchor="middle" fontSize={12.5} fill="#3D424C">Initial oxygen</text>
+        {selectedO2 != null && <line x1={L} x2={W - R} y1={y(selectedO2)} y2={y(selectedO2)} stroke="#B5400F" strokeDasharray="4 4" />}
+        {selectedFlow != null && <line x1={x(selectedFlow)} x2={x(selectedFlow)} y1={T} y2={H - B} stroke="#B5400F" strokeDasharray="4 4" />}
         {pts.map((t) => {
           const k = kindOf(t.normalized.outcome_class)
-          const yy = y(t.normalized.o2_percent as number)
-          const x0 = x(lo(t)), x1 = x(hi(t))
+          const yy = y(t.normalized.o2_percent as number), x0 = x(lo(t)), x1 = x(hi(t))
           const on = highlight.has(t.id)
-          const mx = k === 'blow' ? x1 : x0
           return (
-            <g key={t.id} onMouseEnter={() => setHover(t)} onMouseLeave={() => setHover(null)}
-               style={{ cursor: 'default' }} opacity={highlight.size && !on ? 0.35 : 1}>
-              {x1 > x0 && <line x1={x0} x2={x1} y1={yy} y2={yy} stroke={k === 'burn' ? C.burn : '#3A4A63'} strokeWidth={on ? 2 : 1.2} />}
-              {/* Hit target larger than the mark */}
-              <circle cx={mx} cy={yy} r={7} fill="transparent" />
-              {k === 'low' && <path d={`M${mx - 4},${yy - 3} L${mx + 4},${yy - 3} L${mx},${yy + 4} Z`} fill={C.low} stroke="#0B1120" strokeWidth={1} />}
-              {k === 'blow' && <path d={`M${mx - 4},${yy + 3} L${mx + 4},${yy + 3} L${mx},${yy - 4} Z`} fill={C.blow} stroke="#0B1120" strokeWidth={1} />}
-              {k === 'burn' && <circle cx={mx} cy={yy} r={3.6} fill={C.burn} stroke="#0B1120" strokeWidth={1} />}
-              {k === 'none' && <circle cx={mx} cy={yy} r={3.2} fill="#0B1120" stroke={C.none} strokeWidth={1.3} />}
+            <g key={t.id} onMouseEnter={() => setHover(t)} onMouseLeave={() => setHover(null)} opacity={highlight.size && !on ? 0.3 : 1}>
+              {x1 > x0 && <line x1={x0} x2={x1} y1={yy} y2={yy} stroke={k === 'burn' ? C.burn : '#B9BDC6'} strokeWidth={on ? 2.5 : 1.5} />}
+              <circle cx={k === 'blow' ? x1 : x0} cy={yy} r={9} fill="transparent" />
+              <Marker k={k} x={k === 'blow' ? x1 : x0} y={yy} size={on ? 1.25 : 1} />
             </g>
           )
         })}
       </svg>
-
-      {/* Legend: shape AND colour, so identity never rests on colour alone */}
-      <div className="grid grid-cols-2 gap-x-2 gap-y-1 mt-1 text-[9.5px] text-mute">
+      <div className="flex flex-wrap gap-x-5 gap-y-1.5 px-1 pb-3 text-[13px] text-ink2">
         {(['low', 'blow', 'burn', 'none'] as Kind[]).map((k) => (
-          <div key={k} className="flex items-center gap-1.5">
-            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden>
-              {k === 'low' && <path d="M1,2 L9,2 L5,9 Z" fill={C.low} />}
-              {k === 'blow' && <path d="M1,8 L9,8 L5,1 Z" fill={C.blow} />}
-              {k === 'burn' && <circle cx="5" cy="5" r="3.6" fill={C.burn} />}
-              {k === 'none' && <circle cx="5" cy="5" r="3.2" fill="none" stroke={C.none} strokeWidth="1.3" />}
-            </svg>
-            <span>{LABEL[k]}</span>
-          </div>
+          <span key={k} className="inline-flex items-center gap-1.5">
+            <svg width="14" height="14" viewBox="-7 -7 14 14" aria-hidden><Marker k={k} x={0} y={0} size={1} /></svg>{LABEL[k]}
+          </span>
         ))}
       </div>
-
       {hover && (
-        <div className="absolute top-1 right-1 max-w-[190px] panel px-2 py-1.5 text-[10px] pointer-events-none anim-fade-in">
-          <div className="font-mono text-cryo">{hover.psi_id} · {hover.test_number}</div>
-          <div className="text-slate-300 mt-0.5">O₂ {hover.normalized.o2_percent}% · {lo(hover)}{hi(hover) > lo(hover) ? `–${hi(hover)}` : ''} cm/s</div>
-          <div className="text-slate-200 mt-0.5">{hover.normalized.outcome ?? 'Ending not stated'}</div>
+        <div className="absolute top-4 right-5 max-w-[260px] card px-3 py-2 shadow-sm pointer-events-none text-[13px]">
+          <div className="num text-ink">{hover.psi_id} {hover.acronym} · {hover.test_number}</div>
+          <div className="text-ink2">O₂ {hover.normalized.o2_percent}% · {lo(hover)}{hi(hover) > lo(hover) ? `–${hi(hover)}` : ''} cm/s · {hover.normalized.flow_direction ?? 'direction not recorded'}</div>
+          <div className="text-ink mt-0.5">{hover.normalized.outcome ?? 'Ending not stated'}</div>
         </div>
       )}
     </div>
