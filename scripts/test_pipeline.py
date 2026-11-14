@@ -168,6 +168,23 @@ def _():
     assert hosts and all(h.endswith("nasa.gov") for h in hosts), hosts
 
 
+@check("AI search index is up to date with the data and fully offline")
+def _():
+    import hashlib
+    ix = load("search_index.json")
+    h = hashlib.sha256()
+    for f in ["tests.json", "findings.json", "materials.json", "literature.json"]:
+        with open(os.path.join(DATA, f), "rb") as fh:
+            h.update(fh.read())
+    assert ix["data_hash"] == h.hexdigest(), "stale index: run  node scripts/build_search_index.mjs"
+    assert ix["count"] == len(ix["docs"]) and ix["dim"] == 384
+    for f in ["config.json", "tokenizer.json", "tokenizer_config.json", "onnx/model_quantized.onnx"]:
+        assert os.path.exists(os.path.join(ROOT, "public", "models", "Xenova", "all-MiniLM-L6-v2", f)), f
+    with open(os.path.join(ROOT, "src", "search.ts"), encoding="utf-8") as fh:
+        code = fh.read()
+    assert "allowRemoteModels = false" in code, "the model must never be fetched from the internet"
+
+
 @check("the FLEX model beats always guessing the common outcome")
 def _():
     m = flex["metrics"]

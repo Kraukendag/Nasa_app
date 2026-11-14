@@ -16,6 +16,7 @@ import type { PageId } from './types'
 import Home from './pages/Home'
 import Lab from './pages/Lab'
 import Habitat from './pages/Habitat'
+import Search from './pages/Search'
 import Data from './pages/Data'
 import Findings from './pages/Findings'
 import Ranking from './pages/Ranking'
@@ -31,6 +32,7 @@ const NAV: { id: PageId; label: string }[] = [
   { id: 'ranking', label: 'Ranking' },
   { id: 'questions', label: 'Research questions' },
   { id: 'pipeline', label: 'Pipeline' },
+  { id: 'search', label: 'AI search' },
   { id: 'about', label: 'About' },
 ]
 const PAGES = new Set<string>(['home', ...NAV.map((n) => n.id)])
@@ -98,6 +100,7 @@ export default function App() {
           <div key={page} className={page === 'lab' ? 'h-full' : ''}>
             {page === 'home' && <Home data={data} />}
             {page === 'habitat' && <Habitat data={data} />}
+            {page === 'search' && <Search data={data} />}
             {page === 'lab' && <Lab data={data} />}
             {page === 'data' && <Data data={data} arg={arg} />}
             {page === 'findings' && <Findings data={data} />}

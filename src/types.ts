@@ -276,4 +276,4 @@ export interface FlexModel {
   source: { psi_id: string; doi: string }
 }
 
-export type PageId = 'home' | 'habitat' | 'lab' | 'data' | 'findings' | 'ranking' | 'questions' | 'pipeline' | 'about'
+export type PageId = 'home' | 'habitat' | 'search' | 'lab' | 'data' | 'findings' | 'ranking' | 'questions' | 'pipeline' | 'about'

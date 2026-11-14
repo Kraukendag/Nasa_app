@@ -62,9 +62,12 @@ export default function About({ data }: { data: Dataset }) {
             values used on the Findings page (LUCI, Saffire IV–VI, KC-135), each with document number and page.</p>
           <p><b className="text-ink">To build.</b> The team used Claude Code (Anthropic) to write the pipeline and interface code,
             which is commented in plain English; people reviewed the results.</p>
-          <p><b className="text-ink">Not in the website.</b> No AI runs on this site: no chatbot, no API key, nothing generated at
-            run time. The only model is a classical logistic regression fitted to {data.flexModel.n_training_rows} FLEX tests
-            ({(m.accuracy * 100).toFixed(0)}% accuracy against a {(m.baseline_accuracy * 100).toFixed(0)}% always-“extinction”
+          <p><b className="text-ink">In the website: AI search.</b> A small open language model (all-MiniLM-L6-v2) runs in your
+            browser from files on this site and finds the records, findings and questions closest in meaning to what you ask. It
+            retrieves existing NASA-sourced text with its link; it never writes an answer. No server, no API, no key, no
+            outside request. <a href="#/search">Try it →</a></p>
+          <p><b className="text-ink">One statistical model.</b> A classical logistic regression fitted to {data.flexModel.n_training_rows} FLEX
+            tests ({(m.accuracy * 100).toFixed(0)}% accuracy against a {(m.baseline_accuracy * 100).toFixed(0)}% always-“extinction”
             baseline, AUC {m.auc.toFixed(2)}, validated on held-out conditions).</p>
         </div>
       </Section>

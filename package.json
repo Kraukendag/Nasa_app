@@ -7,13 +7,14 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "data": "python3 scripts/build_data.py",
+    "data": "python3 scripts/build_data.py && node scripts/build_search_index.mjs",
     "test": "python3 scripts/test_pipeline.py"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "5.3.0",
     "@fontsource/ibm-plex-sans": "5.3.0",
     "@fontsource/source-serif-4": "5.3.0",
+    "@huggingface/transformers": "4.3.2",
     "@react-three/drei": "9.114.3",
     "@react-three/fiber": "8.17.10",
     "react": "18.3.1",

@@ -1,0 +1,98 @@
+// =============================================================================
+//  AI SEARCH PAGE
+// =============================================================================
+//  Ask in plain words ("which fabrics went out when the airflow dropped?") and
+//  get the closest records, findings, questions and materials, by meaning
+//  rather than exact words. Runs entirely in the browser (see src/search.ts).
+//  It shows existing text with its source; it never writes an answer.
+// =============================================================================
+
+import { useState } from 'react'
+import type { Dataset } from '../data'
+import { search, warmUp } from '../search'
+import type { Hit } from '../search'
+import { Page, Section } from '../ui'
+
+const TYPES: [string, string][] = [
+  ['record', 'Test records'], ['finding', 'Findings'], ['negative', 'What failed'], ['question', 'Research questions'],
+  ['material', 'Materials'], ['recommendation', 'Habitat recommendations'], ['literature', 'NASA reports'], ['glossary', 'Glossary'],
+]
+const EXAMPLES = [
+  'flames that went out when the airflow was turned down',
+  'materials that burn on Earth but not in space',
+  'what happens at lunar gravity',
+  'smoke detectors and dust',
+  'droplets that kept burning after the flame disappeared',
+]
+
+export default function Search({ data }: { data: Dataset }) {
+  const [q, setQ] = useState('')
+  const [types, setTypes] = useState<Set<string>>(new Set())
+  const [hits, setHits] = useState<Hit[] | null>(null)
+  const [state, setState] = useState<'idle' | 'loading' | 'error'>('idle')
+  const [err, setErr] = useState('')
+
+  const run = async (text: string) => {
+    if (!text.trim()) return
+    setQ(text); setState('loading')
+    try { setHits(await search(text, 25, types)); setState('idle') }
+    catch (e) { setErr((e as Error).message); setState('error') }
+  }
+  const toggle = (t: string) => setTypes((s) => { const n = new Set(s); n.has(t) ? n.delete(t) : n.add(t); return n })
+  const label = Object.fromEntries(TYPES)
+
+  return (
+    <Page title="AI search" intro={<>
+      Ask in your own words. A small AI language model running in your browser finds the {data.tests.length.toLocaleString()} records,
+      findings, research questions and materials closest in meaning to your question, even when they use different words.
+    </>}>
+      <div className="space-y-8">
+        <form className="card p-5 space-y-4" onSubmit={(e) => { e.preventDefault(); void run(q) }}>
+          <div className="flex flex-wrap gap-2">
+            <input value={q} onChange={(e) => setQ(e.target.value)} onFocus={warmUp} aria-label="Search question"
+                   placeholder="e.g. which fabrics went out when the airflow dropped?" className="field flex-1 min-w-[220px] !py-2.5" />
+            <button className="btn btn-primary" disabled={state === 'loading'}>{state === 'loading' ? 'Searching…' : 'Search'}</button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {TYPES.map(([t, l]) => <button type="button" key={t} onClick={() => toggle(t)} className={`chip ${types.has(t) ? 'chip-on' : ''}`}>{l}</button>)}
+          </div>
+          <p className="caption">Try: {EXAMPLES.map((x, i) => (
+            <span key={x}>{i > 0 && ' · '}<button type="button" className="text-accent hover:underline" onClick={() => void run(x)}>{x}</button></span>
+          ))}</p>
+          <p className="caption">The first search downloads the model once (about 50 MB, from this site); after that it runs offline.</p>
+        </form>
+
+        {state === 'error' && <p className="wash p-4 small">The search could not start: {err}. The keyword search on the <a href="#/data">Data</a> page still works.</p>}
+
+        {hits && (
+          <Section title={`Closest matches for “${q}”`}>
+            <ol className="divide-y divide-rule border-y border-rule">
+              {hits.map((h) => (
+                <li key={`${h.doc.type}-${h.doc.id}`} className="py-3 grid sm:grid-cols-[140px_1fr_70px] gap-x-4 gap-y-1">
+                  <span className="caption">{label[h.doc.type] ?? h.doc.type}</span>
+                  <div>
+                    <a href={h.doc.link} className="font-medium">{h.doc.title}</a>
+                    <p className="small text-ink2">{h.doc.text}</p>
+                  </div>
+                  <span className="caption num sm:text-right" title="Cosine similarity between your question and this item (1 = same meaning)">{h.score.toFixed(2)}</span>
+                </li>
+              ))}
+            </ol>
+          </Section>
+        )}
+
+        <Section title="How it works">
+          <ol className="list-decimal pl-5 space-y-2 text-ink2 max-w-3xl">
+            <li>When the site was built, a small open AI model (all-MiniLM-L6-v2, Apache-2.0) turned every record, finding, question,
+              material, recommendation and glossary term into a list of 384 numbers that captures its meaning.</li>
+            <li>Your question is turned into the same kind of list by the same model, running in your browser from files on this site.
+              Nothing is sent anywhere: there is no server, no API and no key.</li>
+            <li>The page lists the items whose meaning is closest (cosine similarity). Every result is existing text from NASA's tables
+              or NASA documents, with a link to where it lives.</li>
+            <li><b className="text-ink">It never writes an answer.</b> It cannot invent a number, because it only retrieves.</li>
+          </ol>
+        </Section>
+      </div>
+    </Page>
+  )
+}

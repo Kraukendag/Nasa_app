@@ -7,7 +7,9 @@
 
 import { lazy, Suspense, useState } from 'react'
 import type { Dataset } from '../data'
-import { LitCite, PsiCite, Stat } from '../ui'
+import { Fig, LitCite, PsiCite, Stat } from '../ui'
+import FlammabilityMap from '../components/FlammabilityMap'
+import SiliconeChart from '../components/SiliconeChart'
 
 // Three.js is loaded only when a 3D view is on screen.
 const MatchScene = lazy(() => import('../components/MatchScene'))
@@ -27,6 +29,12 @@ export default function Home({ data }: { data: Dataset }) {
   const [gravityOn, setGravityOn] = useState(true)
   const withOutcome = data.tests.filter((t) => t.normalized.outcome_class).length
   const bc = data.findings.bass2_counts
+  const f = data.findings
+  const pmmaTests = data.tests.filter((t) => t.psi_id === 'PSI-25' && t.normalized.material === 'PMMA')
+  const noHighlight = new Set<string>()
+  const pmmaCard = data.materials.find((m) => m.id === 'PMMA|solid')?.lowest_sustained_o2
+  const example = data.tests.find((t) => t.psi_id === 'PSI-25' && t.test_number === (pmmaCard?.test ?? 'O4'))
+  const examplePage = (example?.normalized.outcome_source ?? '').match(/p\. (\d+)/)?.[1]
   const pmma = data.materials.find((m) => m.id === 'PMMA|solid')?.lowest_sustained_o2
 
   return (
@@ -74,6 +82,65 @@ export default function Home({ data }: { data: Dataset }) {
             {' '}Drag to rotate. Illustration; there is no slider for Moon or Mars gravity because NASA's PSI holds no partial-gravity combustion data.
           </figcaption>
         </figure>
+      </section>
+
+      {/* ---------------- The evidence: data first ---------------- */}
+      <section className="max-w-[1400px] mx-auto px-5 sm:px-8 pb-12">
+        <h2 className="h2">The evidence, straight from NASA's tables</h2>
+        <div className="grid lg:grid-cols-2 gap-6 mt-6">
+          <Fig n={2} caption={<>Every BASS-II PMMA test by oxygen and airflow, marked by how it ended. The lowest oxygen with an
+            established flame was {pmma ? `${pmma.o2}% (test ${pmma.test})` : 'not recorded'}. No boundary is fitted: the points are the evidence.</>}
+               source="PSI-25 BASS-II table; endings from NASA/TM-20210011385 App. A.">
+            <div className="p-3 sm:p-4">
+              <FlammabilityMap tests={pmmaTests} highlight={noHighlight} selectedO2={null} selectedFlow={null} />
+            </div>
+          </Fig>
+          <Fig n={3} caption={<>The same four silicone samples burned in microgravity and at 1 g. In space all four left about 0 cm
+            burned; on Earth two burned completely. Earth testing misjudged this material. Caveat: four samples, all near the oxygen
+            limit (21.5–22.1% O₂).</>} source="PSI-99 SAFFIRE-II, samples 2-1 to 2-4, burn-length columns.">
+            <div className="p-3 sm:p-4"><SiliconeChart data={data} /></div>
+          </Fig>
+        </div>
+      </section>
+
+      {/* ---------------- Where AI did the work ---------------- */}
+      <section className="border-t border-rule bg-card">
+        <div className="max-w-[1400px] mx-auto px-5 sm:px-8 py-12 grid lg:grid-cols-[1fr_1.2fr] gap-10">
+          <div>
+            <p className="eyebrow">The AI part</p>
+            <h2 className="h2 mt-1">AI turned a 144-page NASA report into data</h2>
+            <p className="text-ink2 mt-3">
+              BASS-II, the largest solid-fuel experiment here, records the conditions of every test but not how it ended. The
+              endings existed only as notes in the report's test tables. AI read those pages and transcribed {bc.observations}{' '}
+              observations word for word, each with its page; written rules then sorted {bc.endings_report} of them into endings.
+              Without this step the oxygen-limit chart above could not exist.
+            </p>
+            <ul className="mt-4 space-y-1.5 small text-ink2">
+              <li><b className="text-ink">Checked:</b> the PSI table's own airflow notes agree on {f.cross_check.agree} of {f.cross_check.checked} tests; 10 of 10 rows spot-checked against the PDF.</li>
+              <li><b className="text-ink">Not invented:</b> AI created no values; it transcribed and sorted. NASA's words are shown beside every ending.</li>
+              <li><b className="text-ink">In the browser:</b> an AI search finds records and questions by meaning, entirely offline. It only retrieves; it never writes answers.</li>
+            </ul>
+            <a href="#/pipeline" className="inline-block mt-4">See the full pipeline and the checks →</a>
+          </div>
+          <figure className="figure self-start">
+            <div className="grid sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-rule">
+              <div className="p-4 bg-wash/50">
+                <p className="caption font-medium text-ink2">NASA report, test {example?.test_number}, p. {examplePage}</p>
+                <blockquote className="small mt-2 border-l-2 border-accent pl-3">“{example?.normalized.outcome_text}”</blockquote>
+              </div>
+              <div className="p-4">
+                <p className="caption font-medium text-ink2">Row on this site</p>
+                <dl className="small mt-2 space-y-1 num">
+                  <div>direction: {example?.normalized.flow_direction}</div>
+                  <div>O₂: {example?.normalized.o2_percent}%</div>
+                  <div>ending: {example?.normalized.outcome}</div>
+                </dl>
+              </div>
+            </div>
+            <figcaption className="figcap"><b>Fig. 4.</b> One of {bc.observations} transcriptions: the report's note (left) becomes a
+              searchable, citable row (right). <span className="text-mute">Source: NASA/TM-20210011385, Appendix A.</span></figcaption>
+          </figure>
+        </div>
       </section>
 
       {/* ---------------- Findings ---------------- */}
