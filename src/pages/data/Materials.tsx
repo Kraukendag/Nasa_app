@@ -88,6 +88,9 @@ function Card({ m, data, onShowRows }: { m: MaterialCard; data: Dataset; onShowR
     <article className="card p-5 flex flex-col gap-4">
       <header>
         <h3 className="h3">{m.name}</h3>
+        {data.literature.glossary.find((g) => g.term === m.name) && (
+          <p className="small text-ink2">{data.literature.glossary.find((g) => g.term === m.name)!.plain}</p>
+        )}
         <p className="caption mt-0.5">{m.fuel_state} · {m.test_count} tests · {m.investigations.join(', ')}</p>
         <p className="caption mt-0.5" title={m.confidence.reason}>Evidence: <b className="text-ink2 font-medium">{m.confidence.level}</b> ({m.confidence.reason})</p>
       </header>

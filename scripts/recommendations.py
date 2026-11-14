@@ -28,8 +28,9 @@ def build_recommendations(s):
                       "normal-gravity screening test can misjudge it in both directions.",
             "evidence": [
                 {"text": f"PMMA kept burning in microgravity at {s['pmma_min_o2']:g}% O2 (BASS-II test "
-                         f"{s['pmma_min_test']}); attempts at {s['pmma_fail_range']} failed.", "psi": "PSI-25", "lit": None},
-                {"text": "For a cellulose fuel the Earth oxygen limit is 16.5% O2, yet with spacecraft-like "
+                         f"{s['pmma_min_test']}); attempts at {s['pmma_fail_range']} did not sustain a flame.",
+                 "psi": "PSI-25", "lit": None},
+                {"text": "A separate result for a cellulose fuel (not PMMA): its Earth oxygen limit is 16.5% O2, yet with spacecraft-like "
                          "ventilation (5-20 cm/s) flames survived at 14% O2.", "psi": None, "lit": "OLSON2004"},
                 {"text": "The other direction: all four SAFFIRE-II silicone samples left about 0 cm burned in "
                          "microgravity, while two burned completely at 1 g.", "psi": "PSI-99", "lit": None},
@@ -102,8 +103,9 @@ def build_recommendations(s):
                 {"text": "On Mir (15 October 1994) a jumpsuit used to smother a small fire kept burning unnoticed "
                          "and burned through; NASA notes it could have grown undetected into a large fire.",
                  "psi": None, "lit": "FLAMELETS2005"},
-                {"text": f"DAFT measured dust aerosols in the ISS cabin ({s['daft_n']} sessions), the particles "
-                         "that cause false alarms.", "psi": "PSI-47", "lit": None},
+                {"text": f"DAFT tested hand-held aerosol instruments aboard the ISS on a test dust (Arizona Road "
+                         f"Dust) in {s['daft_n']} sessions; no PSI table measures how detectors respond to dust.",
+                 "psi": "PSI-47", "lit": None},
                 {"text": f"Carbon monoxide readings reached {s['co_max']:g} ppm in BASS-II test {s['co_max_test']}, "
                          f"and the CO sensor went over its range in {s['co_over_range']} tests, so gas sensing can "
                          "add a second signal.", "psi": "PSI-25", "lit": None},

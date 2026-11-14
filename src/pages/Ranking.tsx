@@ -57,7 +57,7 @@ const CRITERIA: CritInfo[] = [
     why: 'Most of a habitat\'s flammable mass is solid material; gas and droplet flames are mainly fundamental science.' },
   { k: 'scale', label: 'Test scale',
     what: 'How close is the sample size to a real fire?',
-    how: 'Large samples burned in an uncrewed Cygnus (Saffire) 1.0 · glovebox samples (BASS, SAME-R, SPICE) 0.6 · ISS cabin air sampling (DAFT) 0.5 · small samples in a sealed chamber (CIR) 0.4.',
+    how: 'From the RECORDED sample size where the table gives one: 1,000 cm² or more (SAFFIRE-I and -III, 40.6 × 94 cm) 1.0 · smaller recorded samples (SAFFIRE-II, 29 × 5 cm) 0.6. Where no size is recorded, by facility: glovebox samples (BASS, SAME-R, SPICE) 0.6 · ISS cabin air sampling (DAFT) 0.5 · small samples in a sealed chamber (CIR) 0.4.',
     why: 'Fires grow; whether a small sample\'s behaviour carries over to metre-scale fires is an open question.' },
   { k: 'outcomes', label: 'Outcomes recorded',
     what: 'Does the table say how each test ended?',
@@ -70,9 +70,10 @@ const CRITERIA: CritInfo[] = [
 ]
 
 const HAZARD: Record<string, number> = { solid: 1, smoke: 0.8, aerosol: 0.8, liquid: 0.5, gas: 0.4 }
-const SCALE: Record<Investigation['scale_class'], number> = { large: 1, glovebox: 0.6, cabin: 0.5, chamber: 0.4 }
+const SCALE: Record<Investigation['scale_class'], number> = { large: 1, medium: 0.6, glovebox: 0.6, cabin: 0.5, chamber: 0.4 }
 const SCALE_WORDS: Record<Investigation['scale_class'], string> = {
-  large: 'large samples in an uncrewed Cygnus', glovebox: 'glovebox-scale samples', cabin: 'ISS cabin air sampling', chamber: 'small samples in a sealed chamber',
+  large: 'recorded samples of 1,000 cm² or more', medium: 'recorded samples under 1,000 cm²',
+  glovebox: 'glovebox-scale samples (no size recorded)', cabin: 'ISS cabin air sampling', chamber: 'small samples in a sealed chamber',
 }
 const RECOMMENDED: Record<Crit, number> = { o2: 3, pressure: 2, gravity: 1, hazard: 3, scale: 2, outcomes: 2, size: 1 }
 
@@ -114,7 +115,7 @@ function score(i: Investigation, sc: Scenario): Omit<Scored, 'value'> {
         : sc.gravity === 'partial' ? 'No partial-gravity test exists in PSI, so 0 (the same for every investigation).'
           : i.has_1g_reference ? 'Records a normal-gravity reference, so 1.' : 'No normal-gravity reference recorded, so 0.',
       hazard: `${i.fuel_state.charAt(0).toUpperCase() + i.fuel_state.slice(1)} fuel scores ${(HAZARD[i.fuel_state] ?? 0).toFixed(1)}.`,
-      scale: `${SCALE_WORDS[i.scale_class].charAt(0).toUpperCase() + SCALE_WORDS[i.scale_class].slice(1)}: ${SCALE[i.scale_class].toFixed(1)}.`,
+      scale: `${SCALE_WORDS[i.scale_class].charAt(0).toUpperCase() + SCALE_WORDS[i.scale_class].slice(1)}${i.max_sample_area_cm2 ? ` (largest ${i.max_sample_area_cm2.toLocaleString()} cm²)` : ''}: ${SCALE[i.scale_class].toFixed(1)}.`,
       outcomes: `${Math.round(i.outcome_fraction * 100)}% of its tests record how they ended, so ${i.outcome_fraction.toFixed(2)}.`,
       size: `${i.test_count} tests: log₁₀(${i.test_count + 1}) ÷ log₁₀(470) = ${n.toFixed(2)}.`,
     },
@@ -196,11 +197,34 @@ export default function Ranking({ data }: { data: Dataset }) {
             partial gravity. That lowers every score equally; it does not change the order. Lunar-gravity results that do exist
             (LUCI, outside PSI) are on the <a href="#/findings">Findings</a> page.</p>
         )}
+        {fuel === 'all' && (scId === 'moon' || scId === 'iss') && (
+          <p className="wash p-4 small text-ink2 mb-4"><b className="text-ink">Careful with “Any fuel”.</b> Droplet and gas experiments
+            covered wider oxygen and pressure ranges, so they can outrank every solid-material experiment even though a habitat’s
+            fire load is solid materials. For a habitat question, use the “Solid materials” filter.</p>
+        )}
         {top && top.value < 0.5 && (
           <p className="wash p-4 small text-ink2 mb-4">No investigation in this selection reaches 50. That is the finding: this part of the
             mission envelope is barely tested in PSI.</p>
         )}
-        <div className="card overflow-x-auto">
+        {/* Phones: one card per investigation instead of a wide table. */}
+        <ol className="md:hidden space-y-3">
+          {ranked.map((r, n) => (
+            <li key={r.i.psi_id} className="card p-4">
+              <button className="w-full text-left" onClick={() => setOpen(open === r.i.psi_id ? null : r.i.psi_id)} aria-expanded={open === r.i.psi_id}>
+                <div className="flex items-baseline gap-3">
+                  <span className="num caption">{n + 1}</span>
+                  <span className="flex-1"><span className="num">{r.i.psi_id}</span> <b className="font-medium">{r.i.acronym}</b></span>
+                  <span className="num text-xl">{Math.round(r.value * 100)}</span>
+                </div>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-0.5 mt-2 caption num">
+                  {CRITERIA.map((c) => <div key={c.k} className="flex justify-between gap-2"><dt>{c.label}</dt><dd>{r.s[c.k].toFixed(2)}</dd></div>)}
+                </dl>
+              </button>
+              {open === r.i.psi_id && <WhyItRanks r={r} w={w} totalW={totalW} />}
+            </li>
+          ))}
+        </ol>
+        <div className="card overflow-x-auto hidden md:block">
           <table className="tbl min-w-[980px]">
             <thead>
               <tr>

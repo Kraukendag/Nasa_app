@@ -59,11 +59,27 @@ export function PsiCite({ data, psi }: { data: Dataset; psi: string | null }) {
   )
 }
 
-/** The citation for a literature source (outside PSI). */
+/** The citation for a literature source (outside PSI), with who published it.
+ *  NASA reports say so; work by NASA researchers published by a society or
+ *  conference is labelled that way, with why it is still reliable on hover. */
 export function LitCite({ data, keyName }: { data: Dataset; keyName: string }) {
   const s = data.literature.sources[keyName]
   if (!s) return null
-  return <span className="caption">{s.authors}, <i>{s.title}</i>, {s.venue} · <a href={s.url} target="_blank" rel="noreferrer">NTRS {s.ntrs}</a></span>
+  return (
+    <span className="caption">
+      {s.authors}, <i>{s.title}</i>, {s.venue} · <a href={s.url} target="_blank" rel="noreferrer">NTRS {s.ntrs}</a>
+      {' '}· <span title={s.reliability} className="underline decoration-dotted underline-offset-2 cursor-help">
+        {s.tier === 'nasa_report' ? 'NASA report' : `not NASA-published (${s.publisher}); NASA researchers`}
+      </span>
+    </span>
+  )
+}
+
+/** A term with its NASA definition on hover or tap (see the glossary on About). */
+export function Term({ data, term, children }: { data: Dataset; term: string; children?: ReactNode }) {
+  const g = data.literature.glossary.find((x) => x.term.toLowerCase().startsWith(term.toLowerCase()))
+  if (!g) return <>{children ?? term}</>
+  return <abbr title={`${g.plain} (NASA: “${g.quote}”)`} className="cursor-help decoration-dotted">{children ?? term}</abbr>
 }
 
 export function Stat({ value, label }: { value: ReactNode; label: string }) {

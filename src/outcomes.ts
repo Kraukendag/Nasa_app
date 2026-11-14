@@ -40,9 +40,12 @@ export function summarise(values: number[]): NumericSummary | null {
 
 /** gravity: '0g' summarises the flight results; '1g' the normal-gravity
  *  reference columns (only SAFFIRE-II has them). */
-export function summariseOutcomes(tests: TestRecord[], gravity: '0g' | '1g' = '0g'): OutcomeSummary {
+export function summariseOutcomes(tests: TestRecord[], gravity: '0g' | '1g' = '0g', dropImplausibleO2 = false): OutcomeSummary {
+  // Same counting rule as the data build: a doubtful oxygen reading does not
+  // change how a test ended, so those rows are dropped only when oxygen is
+  // the thing being matched.
   const usable = tests.filter((t) => !t.is_note && !t.is_flow_vis
-    && !t.anomalies.includes('implausible_o2_reading'))
+    && !(dropImplausibleO2 && t.anomalies.includes('implausible_o2_reading')))
 
   const tally = new Map<string, { label: string; count: number }>()
   let ignited = 0, failed = 0, hasIgnition = false, coolRec = 0, coolTer = 0

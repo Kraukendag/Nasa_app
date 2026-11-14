@@ -220,6 +220,7 @@ def main():
             "pages": [104, 107, 109, 113],
         },
         "cross_check": bass2_cross_check(all_tests),
+        "bass2_counts": bass2_counts(all_tests),
         "not_included": derive.NOT_INCLUDED,
         "anomaly_summary": dict(Counter(a for t in all_tests for a in t["anomalies"])),
         "science_flag_summary": dict(Counter(f for t in all_tests for f in t["science_flags"])),
@@ -261,6 +262,36 @@ def main():
           f"{len(findings['anomaly_summary'])} types; science flags: {sum(findings['science_flag_summary'].values())}")
     print(f"  Highest solid-fuel oxygen in this dataset: {max_solid_o2:g}%")
     print("=" * 72)
+
+
+def bass2_counts(all_tests):
+    """The BASS-II numbers every page quotes, counted once here.
+
+    observations     tests whose report note was transcribed (word for word)
+    endings_report   of those, how many the rules could give an ending category
+    endings_table    endings read from the PSI table's own airflow cells
+                     (O22, a 2016 test that is not in the report)
+    by_class         every ending category over ALL BASS-II tests
+    """
+    rows = [t for t in all_tests if t["psi_id"] == "PSI-25" and not t["is_note"]]
+    rep = [t for t in rows if (t["normalized"].get("outcome_source") or "").startswith("NASA/TM-20210011385")]
+    obs = [t for t in rep if t["normalized"].get("outcome_text")]
+    rep_end = [t for t in obs if t["normalized"]["outcome_class"]]
+    tab_end = [t for t in rows if t["normalized"]["outcome_class"] and t not in rep]
+    by_class = Counter(t["normalized"]["outcome_class"] for t in rows if t["normalized"]["outcome_class"])
+    by_class_report = Counter(t["normalized"]["outcome_class"] for t in rep_end)
+    return {
+        "tests_in_table": len(rows),
+        "transcribed": len(rep),
+        "observations": len(obs),
+        "observation_missing": [t["test_number"] for t in rep if not t["normalized"].get("outcome_text")],
+        "endings_report": len(rep_end),
+        "no_category": sorted(t["test_number"] for t in obs if not t["normalized"]["outcome_class"]),
+        "endings_table": [t["test_number"] for t in tab_end],
+        "endings_total": sum(by_class.values()),
+        "by_class": dict(by_class),
+        "by_class_report": dict(by_class_report),
+    }
 
 
 def bass2_cross_check(all_tests):
@@ -305,14 +336,20 @@ def compute_stats(real, per_inv, max_solid_o2):
     """Every number quoted in the insights and research questions, computed
     here from the rows so the prose can never drift from the data."""
     import statistics as st
-    b2 = [t for t in real if t["psi_id"] == "PSI-25" and "implausible_o2_reading" not in t["anomalies"]]
+    # ONE COUNTING RULE (the reviewer found the same count differing between
+    # pages): endings are counted over EVERY BASS-II test with an ending.
+    # A doubtful oxygen reading does not change how a test ended, so those
+    # rows are left out only of oxygen-based numbers (b2 below), never of
+    # ending counts (b2_all).
+    b2_all = [t for t in real if t["psi_id"] == "PSI-25"]
+    b2 = [t for t in b2_all if "implausible_o2_reading" not in t["anomalies"]]
     n = lambda t: t["normalized"]
     pmma_ok = sorted((n(t)["o2_percent"], t["test_number"]) for t in b2
                      if n(t)["material"] == "PMMA" and n(t)["outcome_class"] in SUSTAINED)
     pmma_fail = sorted(n(t)["o2_percent"] for t in b2 if n(t)["material"] == "PMMA"
                        and n(t)["outcome_class"] in ("no_sustained_flame", "no_ignition")
                        and n(t)["o2_percent"] < pmma_ok[0][0])
-    cls = lambda c: [t for t in b2 if n(t)["outcome_class"] == c]
+    cls = lambda c: [t for t in b2_all if n(t)["outcome_class"] == c]
     drops = [n(t)["o2_percent"] - n(t)["o2_final_percent"] for t in b2 if n(t)["o2_final_percent"] is not None]
     co = max((n(t)["co_final_ppm"], t["test_number"]) for t in b2 if n(t)["co_final_ppm"] is not None)
     fx = [t for t in real if t["psi_id"] == "PSI-69"]

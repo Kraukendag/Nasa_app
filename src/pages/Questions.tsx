@@ -115,6 +115,10 @@ export default function Questions({ data }: { data: Dataset }) {
                         <Item k="What is missing" v={x.gap} strong />
                         <Item k="How it could be answered" v={x.answer_by} />
                         <Item k="What to measure" v={x.measure} />
+                        {x.refs.length === 0 && (
+                          <div><dt className="caption font-medium text-ink2">Sources</dt>
+                            <dd className="text-ink2">None: no NASA source used by this project covers it. That absence is the gap.</dd></div>
+                        )}
                         {x.refs.length > 0 && (
                           <div><dt className="caption font-medium text-ink2">Sources</dt>
                             <dd className="text-ink2">{x.refs.map((r) => {

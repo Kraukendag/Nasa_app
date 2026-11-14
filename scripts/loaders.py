@@ -944,6 +944,9 @@ def load_saffire2():
             outcome_source="PSI-99 experimental table (burn length columns)",
         )
         normalized["thickness_raw"] = thickness_raw
+        # Sample size as recorded ("29 cm", "5 cm"); the ranking's scale score uses it.
+        normalized["sample_length_cm"] = to_float(row.get("Sample Length"))
+        normalized["sample_width_cm"] = to_float(row.get("Sample Width (cm)"))
         normalized["burn_length_0g_cm"] = b0
         normalized["burn_length_1g_cm"] = b1
         normalized["burn_length_0g_raw"] = b0_raw

@@ -21,7 +21,7 @@ export default function About({ data }: { data: Dataset }) {
   const flags = Object.values(data.findings.anomaly_summary).reduce((a, b) => a + b, 0)
   const withOutcome = data.tests.filter((t) => t.normalized.outcome_class).length
   const m = data.flexModel.metrics
-  const extracted = data.tests.filter((t) => t.psi_id === 'PSI-25' && !!t.normalized.outcome_text && (t.normalized.outcome_source ?? '').startsWith('NASA/TM')).length
+  const bc = data.findings.bass2_counts
 
   return (
     <Page title="About Micro Flamma" intro={<>
@@ -55,7 +55,7 @@ export default function About({ data }: { data: Dataset }) {
       <Section title="How AI was used">
         <div className="space-y-4 text-ink2 max-w-3xl">
           <p><b className="text-ink">To extract, not to answer.</b> BASS-II's table does not say how its tests ended. AI-assisted
-            transcription read the test matrices of NASA's 144-page summary report and turned {extracted} free-text observations
+            transcription read the test matrices of NASA's 144-page summary report and turned {bc.observations} free-text observations
             into a table, each tied to its page and checked against the PSI table and the PDF.{' '}
             <a href="#/pipeline">See the pipeline →</a></p>
           <p><b className="text-ink">To find and verify sources.</b> NASA technical reports were searched and read to confirm the
@@ -73,13 +73,11 @@ export default function About({ data }: { data: Dataset }) {
         BASS-II's objectives say it feeds “the combustion computational models used in the design of fire detection and
         suppression systems in microgravity and on Earth” (PSI-25 record). The links below are context, not results in these tables.
       </>}>
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid md:grid-cols-3 gap-4">
           <Benefit title="Smoke detectors that tell smoke from dust" tag="PSI-101 SAME-R · PSI-47 DAFT"
-                   body="SAME-R measures how smoke particles grow as they age; DAFT measures the dust that causes false alarms. A building's smoke detector faces the same problem." />
+                   body="SAME-R measures how smoke particles grow as they age; DAFT tested hand-held instruments for measuring dust aerosols aboard the ISS. Telling smoke from dust is the same problem a building's smoke detector faces." />
           <Benefit title="Soot and cleaner flames" tag="PSI-107 SPICE"
                    body="SPICE locates the smoke point, the fuel flow at which a flame starts releasing soot, which also matters for burners and engines." />
-          <Benefit title="Patchier, safer prescribed burns" tag="NASA Glenn, NTRS 20050217475"
-                   body="NASA Glenn researchers note that the least damaging wildfires leave a mosaic of unburned fingers and islands, and that understanding fingering flamelets could help plan prescribed burns that do the same." />
           <Benefit title="Low-temperature combustion" tag="PSI-39 CFI · PSI-159 CFI-G"
                    body="Cool flames are the low-temperature chemistry that precedes ignition in engines. Without buoyancy they can be studied cleanly." />
         </div>
@@ -93,6 +91,20 @@ export default function About({ data }: { data: Dataset }) {
             'This is a research summary, not a material certification or a safety approval.',
           ].map((g) => <li key={g} className="py-3 flex gap-3 text-ink2"><span className="text-accent" aria-hidden>✕</span><span>{g}</span></li>)}
         </ul>
+      </Section>
+
+      <Section title="Glossary" id="glossary" intro="Terms used on this site, each with NASA's own wording and where it comes from.">
+        <dl className="divide-y divide-rule border-y border-rule">
+          {data.literature.glossary.map((g) => (
+            <div key={g.term} className="py-3 grid md:grid-cols-[180px_1fr] gap-x-6 gap-y-1">
+              <dt className="font-medium">{g.term}</dt>
+              <dd>
+                <p className="text-ink2">{g.plain}</p>
+                <p className="caption mt-1">NASA: “{g.quote}” · {data.literature.sources[g.source]?.title ?? g.source}, {g.where}</p>
+              </dd>
+            </div>
+          ))}
+        </dl>
       </Section>
 
       <Section title="Sources">
@@ -112,10 +124,13 @@ export default function About({ data }: { data: Dataset }) {
           </table>
         </div>
 
-        <h3 className="h3 mt-8">NASA Technical Reports Server</h3>
+        <h3 className="h3 mt-8">Documents on the NASA Technical Reports Server</h3>
+        <p className="small text-ink2 mt-1">{Object.values(data.literature.sources).filter((x) => x.tier === 'nasa_report').length} are NASA's own reports. The others are work by NASA researchers or NASA programmes that a
+          society or conference published; each says so, and why it is still reliable.</p>
         <ul className="mt-3 space-y-2 small">
           {Object.entries(data.literature.sources).map(([k, s]) => (
-            <li key={k}>{s.authors}. <i>{s.title}</i>. {s.venue}. <a href={s.url} target="_blank" rel="noreferrer">NTRS {s.ntrs}</a></li>
+            <li key={k}>{s.authors}. <i>{s.title}</i>. {s.venue}. <a href={s.url} target="_blank" rel="noreferrer">NTRS {s.ntrs}</a>
+              <span className="caption block">{s.tier === 'nasa_report' ? 'Published by NASA.' : `Not published by NASA (${s.publisher}). Why it is still used: ${s.reliability}`}</span></li>
           ))}
           <li>BASS-II “Fan calibration data.xlsx”, PSI-25 resources (velocity = Air display × 1.0066).</li>
           <li>NASA Space Apps Challenge 2026, “Flame in Freefall”: habitat and suit atmospheres (framing only).</li>

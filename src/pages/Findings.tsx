@@ -24,6 +24,10 @@ const NEG_TITLES: Record<string, string> = {
   instrument_or_record: 'Instrument problems and missing records',
 }
 
+/** Percentage rounded half-up on the decimal value: 0.15 / 0.40 = 37.5% -> 38%.
+ *  (Plain Math.round gave 37 because 0.375 * 100 is 37.4999... in floating point.) */
+const pct = (a: number, b: number) => Math.round(Number(((a / b) * 100).toFixed(6)))
+
 export default function Findings({ data }: { data: Dataset }) {
   const f = data.findings
   const lit = data.literature
@@ -76,13 +80,13 @@ export default function Findings({ data }: { data: Dataset }) {
           <Fig n={1} caption={<>Flame spread at simulated lunar gravity (0.16 g) against 1 g, from LUCI, flown on Blue Origin
             New Shepard on 4 February 2025.</>} source={<LitCite data={data} keyName="LUCI" />}>
             <div className="overflow-x-auto">
-              <table className="tbl min-w-[520px]">
-                <thead><tr><th>Material</th><th>Quantity</th><th className="text-right">0.16 g</th><th className="text-right">1 g</th><th>Change</th></tr></thead>
+              <table className="tbl sm:min-w-[520px]">
+                <thead><tr><th>Material</th><th>Quantity</th><th className="text-right">0.16 g</th><th className="text-right">1 g</th><th className="hidden sm:table-cell">Change</th></tr></thead>
                 <tbody>
                   {lit.points.map((p, i) => (
                     <tr key={i}><td>{p.material}</td><td>{p.quantity}</td>
                       <td className="text-right num">{p.value} {p.unit}</td><td className="text-right num">{p.compare_1g} {p.unit}</td>
-                      <td className="num">{Math.round((p.value / p.compare_1g) * 100)}% of the 1 g value</td></tr>
+                      <td className="num hidden sm:table-cell">{pct(p.value, p.compare_1g)}% of the 1 g value</td></tr>
                   ))}
                 </tbody>
               </table>
@@ -91,15 +95,15 @@ export default function Findings({ data }: { data: Dataset }) {
           </Fig>
 
           <Fig n={2} caption={<>Saffire IV–VI: large samples burned in uncrewed Cygnus vehicles after leaving the ISS, including
-            the first spacecraft fire tests at lunar-habitat-like oxygen and pressure. All in 20 cm/s concurrent flow.</>}
+            spacecraft fire tests at lunar-habitat-like oxygen and pressure. All in 20 cm/s concurrent flow.</>}
                source={<LitCite data={data} keyName="SAFFIRE_VI_ICES2024" />}>
             <div className="overflow-x-auto">
-              <table className="tbl min-w-[560px]">
-                <thead><tr><th>Sample</th><th>Material</th><th className="text-right">Length</th><th className="text-right">Pressure</th><th className="text-right">O₂</th></tr></thead>
+              <table className="tbl sm:min-w-[560px]">
+                <thead><tr><th>Sample</th><th>Material</th><th className="text-right hidden sm:table-cell">Length</th><th className="text-right">Pressure</th><th className="text-right">O₂</th></tr></thead>
                 <tbody>
                   {lit.saffire_iv_vi.map((r) => (
                     <tr key={r.sample} className={r.o2_percent >= 26 ? 'bg-wash' : ''}>
-                      <td className="num">{r.sample}</td><td>{r.material}</td><td className="text-right num">{r.length_cm} cm</td>
+                      <td className="num">{r.sample}</td><td>{r.material}</td><td className="text-right num hidden sm:table-cell">{r.length_cm} cm</td>
                       <td className="text-right num">{r.pressure_kpa} kPa</td><td className="text-right num">{r.o2_percent}%</td></tr>
                   ))}
                 </tbody>

@@ -26,7 +26,7 @@ export default function Home({ data }: { data: Dataset }) {
   const [lit, setLit] = useState(false)
   const [gravityOn, setGravityOn] = useState(true)
   const withOutcome = data.tests.filter((t) => t.normalized.outcome_class).length
-  const extracted = data.tests.filter((t) => t.psi_id === 'PSI-25' && !!t.normalized.outcome_text && (t.normalized.outcome_source ?? '').startsWith('NASA/TM')).length
+  const bc = data.findings.bass2_counts
   const pmma = data.materials.find((m) => m.id === 'PMMA|solid')?.lowest_sustained_o2
 
   return (
@@ -37,15 +37,14 @@ export default function Home({ data }: { data: Dataset }) {
           <p className="eyebrow">NASA Space Apps Challenge 2026 · Flame in Freefall</p>
           <h1 className="h1 mt-3">Earth's fire test can misjudge a material in space, in both directions</h1>
           <p className="lede mt-5 max-w-xl">
-            Spacecraft materials are approved by burning them in normal gravity. In NASA's orbital experiments, PMMA kept
-            burning at {pmma ? `${pmma.o2}%` : 'low'} oxygen, and NASA analysis reports flames surviving below the Earth
-            oxygen limit in spacecraft-like airflow. Silicone went the other way: it burned on Earth but barely in space.
-            Without gravity, hot gas does not rise, and flames behave differently.
+            Spacecraft materials are approved by burning them in normal gravity. NASA results show that test can be wrong both
+            ways: a cellulose fuel kept burning at 14% oxygen in spacecraft-like airflow, below its 16.5% Earth limit, while
+            silicone burned on Earth but barely in space. In orbit, PMMA kept burning at just {pmma ? `${pmma.o2}%` : 'low'} oxygen.
           </p>
           <p className="text-ink2 mt-4 max-w-xl">
-            Micro Flamma brings together {data.tests.length.toLocaleString()} NASA records, including {extracted} test endings
-            that AI helped extract from a NASA report, to show what was measured, what it means for a lunar habitat, and
-            what is still unknown.
+            Micro Flamma brings together {data.tests.length.toLocaleString()} NASA records, including {bc.observations} test
+            observations that AI helped extract from a NASA report ({bc.endings_report} of them say how the test ended), to show
+            what was measured, what it means for a lunar habitat, and what is still unknown.
           </p>
           <div className="flex flex-wrap gap-3 mt-7">
             <a href="#/habitat" className="btn btn-primary no-underline hover:no-underline">What it means for a lunar habitat</a>
@@ -116,8 +115,8 @@ export default function Home({ data }: { data: Dataset }) {
         <div className="card p-6 grid grid-cols-2 md:grid-cols-5 gap-6">
           <Stat value={data.tests.length.toLocaleString()} label="records from 14 PSI tables" />
           <Stat value={withOutcome} label="tests with a recorded ending" />
-          <Stat value={extracted} label="endings extracted from NASA's BASS-II report" />
-          <Stat value={data.literature.saffire_iv_vi.length + data.literature.points.length} label="verified results from beyond PSI" />
+          <Stat value={`${bc.observations} / ${bc.endings_report}`} label="observations / endings AI extracted from NASA's BASS-II report" />
+          <Stat value={`${data.literature.points.length} + ${data.literature.saffire_iv_vi.length}`} label="measured results + test conditions from NASA work beyond PSI" />
           <Stat value={data.findings.research_questions.length} label="open research questions" />
         </div>
       </section>

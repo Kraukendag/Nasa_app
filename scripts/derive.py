@@ -72,8 +72,8 @@ INVESTIGATIONS = {
         sensors=[], sensors_basis="The table records conditions and fibre use; no instrument columns."),
     "PSI-47": dict(acronym="DAFT", title="Dust and Aerosol Measurement Feasibility Test", doi="10.60555/ztgj-d202",
         hardware="Handheld aerosol instruments", platform="ISS", fuel_state="aerosol", pillar="detection",
-        summary="Two sessions measuring Arizona Road Dust aerosol, relevant to how dust can confuse smoke "
-                "detectors.",
+        summary="Two sessions aboard the ISS testing hand-held aerosol instruments (a modified P-Trak and a "
+                "DustTrak) on Arizona Road Dust, a test dust, and sampling cabin air near racks.",
         sensors=["P-Trak (modified, alcohol wick)", "DustTrak"],
         sensors_basis="Named in the Hardware Description column."),
     "PSI-68": dict(acronym="FLEX-2", title="Flame Extinguishment Experiment 2", doi="10.60555/byp8-h018",
@@ -171,6 +171,9 @@ def build_investigations(per_inv):
                      if any(t["normalized"].get(key) not in (None, [], "") for t in tests)]
         with_outcome = sum(1 for t in tests if t["normalized"].get("outcome_class"))
         lengths = [t["normalized"].get("sample_length_cm") for t in tests]
+        areas = [t["normalized"]["sample_length_cm"] * t["normalized"]["sample_width_cm"] for t in tests
+                 if t["normalized"].get("sample_length_cm") and t["normalized"].get("sample_width_cm")]
+        max_area = max(areas, default=None)
         out.append({
             "psi_id": psi_id,
             **{k: v for k, v in meta.items() if k not in ("sensors", "sensors_basis", "objectives")},
@@ -188,11 +191,15 @@ def build_investigations(per_inv):
             "pressure_kpa_range": _range(kpa),
             "outcome_fraction": round(with_outcome / len(tests), 3) if tests else 0,
             "has_1g_reference": any(t["normalized"].get("has_1g_reference") for t in tests),
-            # Physical scale of the experiment, used by the ranking's "scale"
-            # criterion: large Cygnus burns > glovebox duct > small chamber.
-            "scale_class": ("large" if meta["platform"] == "Cygnus"
+            # Physical scale, used by the ranking's "scale" criterion. "large"
+            # needs a RECORDED sample of at least 1,000 cm^2 (SAFFIRE-I and -III,
+            # 40.6 x 94 cm); flying in a Cygnus is not enough on its own
+            # (SAFFIRE-II's samples were 29 x 5 cm). The reviewer caught this.
+            "scale_class": ("large" if max_area and max_area >= 1000
+                            else "medium" if max_area
                             else "glovebox" if meta["hardware"].startswith("MSG")
                             else "cabin" if psi_id == "PSI-47" else "chamber"),
+            "max_sample_area_cm2": round(max_area, 1) if max_area else None,
             "max_sample_length_cm": max([l for l in lengths if l], default=None),
             "embedded_notes": [r["normalized"].get("note_text") for r in records
                                if r["is_note"] and r["normalized"].get("note_text")],
@@ -382,26 +389,25 @@ def build_coverage(all_tests):
     counts = Counter(t["normalized"]["material"] for t in solids)
     materials = [m for m, c in counts.most_common() if c >= 3]
     grid = {}
+    NR = "O\u2082 not recorded"
     for m in materials:
         rows = {}
+        mine = [t for t in solids if t["normalized"]["material"] == m]
         for label, lo, hi in O2_BINS:
             cells = {}
             for g in GRAVITY:
-                if g == "0 g":
-                    n = sum(1 for t in solids if t["normalized"]["material"] == m
-                            and t["normalized"].get("o2_percent") is not None
-                            and lo <= t["normalized"]["o2_percent"] < hi)
-                else:
-                    n = 0          # no partial-g data; 1 g references carry no O2 value
-                cells[g] = n
+                cells[g] = (sum(1 for t in mine if t["normalized"].get("o2_percent") is not None
+                                and lo <= t["normalized"]["o2_percent"] < hi) if g == "0 g" else 0)
             rows[label] = cells
-        unknown = sum(1 for t in solids if t["normalized"]["material"] == m
-                      and t["normalized"].get("o2_percent") is None)
-        one_g = sum(1 for t in solids if t["normalized"]["material"] == m
-                    and t["normalized"].get("has_1g_reference"))
+        # Tests whose table gives no oxygen are counted here, not shown as 0.
+        # SAFFIRE-II's normal-gravity burns record no oxygen of their own, so
+        # they land in this column at 1 g (no partial-gravity data exists).
+        unknown = sum(1 for t in mine if t["normalized"].get("o2_percent") is None)
+        one_g = sum(1 for t in mine if t["normalized"].get("has_1g_reference"))
+        rows[NR] = {g: (unknown if g == "0 g" else one_g if g == "1 g" else 0) for g in GRAVITY}
         grid[m] = {"cells": rows, "o2_not_recorded_0g": unknown, "one_g_references": one_g}
 
-    return {"o2_bins": [b[0] for b in O2_BINS], "gravity": GRAVITY, "grid": grid,
+    return {"o2_bins": [b[0] for b in O2_BINS] + ["O\u2082 not recorded"], "gravity": GRAVITY, "grid": grid,
             "pressure_note": "No solid-fuel table in this dataset records chamber pressure, so reduced-"
                              "pressure coverage for solids cannot be shown; none is recorded."}
 
@@ -416,10 +422,12 @@ def build_key_insights(stats):
     return [
         {"id": "low_oxygen",
          "headline": f"PMMA kept burning in microgravity at {stats['pmma_min_o2']}% oxygen",
-         "detail": (f"BASS-II test {stats['pmma_min_test']} (a PMMA rod) sustained a flame at {stats['pmma_min_o2']}% O2; "
-                    f"every attempt at {stats['pmma_fail_range']} failed. Earth screening can understate this: Olson (2004) gives "
-                    "the Earth oxygen limit for a cellulose fuel as 16.5%, yet flames survived at 14% under spacecraft-like "
-                    "ventilation of 5-20 cm/s."),
+         "detail": (f"BASS-II test {stats['pmma_min_test']} (a PMMA rod) sustained a flame at {stats['pmma_min_o2']}% O2. "
+                    f"Attempts at {stats['pmma_fail_range']} did not sustain one; the closest, O13b at 14.6%, "
+                    "\u201conly stayed lit at 0.9 for less than a minute\u201d. A separate NASA result, for a cellulose "
+                    "fuel rather than PMMA: its Earth oxygen limit is 16.5%, yet flames survived at 14% under "
+                    "spacecraft-like ventilation of 5-20 cm/s. No NASA normal-gravity oxygen limit for PMMA is "
+                    "cited here, so the two numbers are not compared."),
          "psi_id": "PSI-25", "doi": "10.60555/4qc4-de67", "lit": ["OLSON2004", "BASS2_TM"],
          "source": f"PSI-25 tests {stats['pmma_min_test']}, O12 (NASA/TM-20210011385 App. A); Olson, NASA/TM-2004-213114"},
         {"id": "silicone",

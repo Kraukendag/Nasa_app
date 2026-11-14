@@ -16,30 +16,45 @@ SOURCES = {
         "authors": "Ferkul et al.", "venue": "ASGSR 2025 Annual Meeting (presentation)",
         "ntrs": "20250010653",
         "url": "https://ntrs.nasa.gov/citations/20250010653",
+        "tier": "nasa_research_elsewhere",
+        "publisher": "American Society for Gravitational and Space Research (ASGSR)",
+        "reliability": "A NASA Glenn experiment presented by its NASA lead; the flight data and slides are archived on NASA’s report server.",
     },
     "SAFFIRE_VI_ICES2024": {
         "title": "Preliminary Results from the Saffire VI Experiment",
         "authors": "Urban, Ruff, Ferkul et al.", "venue": "53rd ICES, July 2024 (presentation)",
         "ntrs": "20240007488",
         "url": "https://ntrs.nasa.gov/citations/20240007488",
+        "tier": "nasa_research_elsewhere",
+        "publisher": "International Conference on Environmental Systems (ICES)",
+        "reliability": "NASA’s Saffire spacecraft-fire programme; first author from NASA Glenn; archived on NTRS.",
     },
     "FEIER2001": {
         "title": "Upward Flame Spread Over Thin Solids in Partial Gravity",
         "authors": "Feier, Shih, Sacksteder, T'ien", "venue": "AIAA 2001-0466",
         "ntrs": "20010059376",
         "url": "https://ntrs.nasa.gov/citations/20010059376",
+        "tier": "nasa_research_elsewhere",
+        "publisher": "American Institute of Aeronautics and Astronautics (AIAA)",
+        "reliability": "Experiments flown on NASA’s KC-135 aircraft, NASA-funded, with a NASA Glenn co-author; archived on NTRS.",
     },
     "OLSON2004": {
         "title": "Most Probable Fire Scenarios in Spacecraft and Extraterrestrial Habitats - Why NASA's Current Test 1 Might Not Always Be Conservative",
         "authors": "S.L. Olson", "venue": "NASA/TM-2004-213114",
         "ntrs": "20040084156",
         "url": "https://ntrs.nasa.gov/citations/20040084156",
+        "tier": "nasa_report",
+        "publisher": "NASA",
+        "reliability": "NASA Technical Memorandum.",
     },
     "LPSC2026": {
         "title": "Material Flammability at Lunar and Martian Gravity",
         "authors": "Ferkul, Kralik, Liao", "venue": "Lunar and Planetary Science Conference 2026",
         "ntrs": "20260000646",
         "url": "https://ntrs.nasa.gov/citations/20260000646",
+        "tier": "nasa_research_elsewhere",
+        "publisher": "Lunar and Planetary Science Conference (abstract)",
+        "reliability": "First author from NASA Glenn; a short conference abstract that mostly summarises earlier work and NASA’s planned FM2 experiment, so it is the weakest source used.",
     },
     "BASS2_TM": {
         "title": "Burning and Suppression of Solids-II (BASS-II) Summary Report",
@@ -47,6 +62,9 @@ SOURCES = {
         "venue": "NASA/TM-20210011385, Oct 2021",
         "ntrs": "20210011385",
         "url": "https://ntrs.nasa.gov/citations/20210011385",
+        "tier": "nasa_report",
+        "publisher": "NASA",
+        "reliability": "NASA Technical Memorandum.",
     },
     # NASA Glenn "Research and Technology 2004"; NTRS marks it public use
     # permitted with no third-party material, so its figure is bundled.
@@ -56,6 +74,9 @@ SOURCES = {
         "venue": "NASA Glenn Research and Technology 2004 (June 2005)",
         "ntrs": "20050217475",
         "url": "https://ntrs.nasa.gov/citations/20050217475",
+        "tier": "nasa_report",
+        "publisher": "NASA",
+        "reliability": "NASA Glenn Research and Technology report.",
     },
 }
 
@@ -76,7 +97,7 @@ LUCI_NOTES = [
     "Two samples burned in air at normal pressure: SIBAL fabric (5 cm x 30 cm) and a 4 mm diameter PMMA rod.",
     "The 1 g SIBAL flame went out about 45 seconds sooner than the lunar-g flame.",
     "The PMMA rod spread about 6 cm before extinction at lunar g; steady spread was not reached.",
-    "Burns lasted more than two and a half minutes; LPSC 2026 notes the Coriolis force adds uncertainty.",
+    "Burns lasted more than two and a half minutes. Two camera views show the Coriolis force pulling the PMMA flame away from the rod's axis.",
 ]
 
 # Saffire IV-VI test matrix as executed (ICES 2024, slide 11). All 20 cm/s concurrent.
@@ -103,7 +124,7 @@ STATEMENTS = [
      "where": "p. 123"},
     {"source": "LPSC2026",
      "text": "Early numerical and experimental evidence suggested lunar gravity could be more hazardous, since flame spread rate as a function of gravity peaks there; related work suggests the oxygen concentration needed for flammability reaches a minimum near lunar gravity.",
-     "where": "Introduction"},
+     "where": "Current Knowledge"},
     {"source": "LPSC2026",
      "text": "Flammability of Materials on the Moon (FM2), planned for launch in late 2026, will burn four solid fuel samples in quiescent habitable atmospheres in real lunar gravity, with cameras, radiometers and an oxygen sensor.",
      "where": "Combustion on the Moon"},
@@ -133,7 +154,8 @@ FLAMELET_FIGURE = {
 
 
 def build_literature():
-    return {"sources": SOURCES, "points": POINTS, "luci_notes": LUCI_NOTES,
+    from glossary import GLOSSARY
+    return {"glossary": GLOSSARY, "sources": SOURCES, "points": POINTS, "luci_notes": LUCI_NOTES,
             "saffire_iv_vi": SAFFIRE_IV_VI, "statements": STATEMENTS,
             "flamelet_figure": FLAMELET_FIGURE,
             "note": "Values checked against the NTRS documents listed. Not PSI data; never used in the Lab's matching or the FLEX model."}

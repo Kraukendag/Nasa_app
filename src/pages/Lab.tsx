@@ -136,7 +136,9 @@ export default function Lab({ data }: { data: Dataset }) {
   useEffect(() => { if (gravity === '1g' && !has1g) setGravity('0g') }, [has1g, gravity])
 
   const partialG = gravity === 'moon' || gravity === 'mars'
-  const outcomes = useMemo(() => summariseOutcomes(result, gravity === '1g' ? '1g' : '0g'), [result, gravity])
+  // Rows with an implausible oxygen reading are left out only when you filter
+  // BY oxygen: how a test ended does not depend on a faulty O2 sensor.
+  const outcomes = useMemo(() => summariseOutcomes(result, gravity === '1g' ? '1g' : '0g', sel.o2 != null), [result, gravity, sel.o2])
   const card = chosen ? cardFor(data, chosen, state) : undefined
 
   // ---- What the figures show, all taken from the matching tests -----------
@@ -170,6 +172,19 @@ export default function Lab({ data }: { data: Dataset }) {
   const nozzle = median(result.map((t) => t.normalized.nozzle_mm as number | null))
   const burnerMm = median(result.map((t) => t.normalized.burner_size_mm as number | null))
   const psiShown = [...new Set(result.map((t) => t.psi_id))]
+  // What the drawing does NOT show: the other shapes and flow directions in
+  // the matching set (the reviewer found the caption implied one shape only).
+  const mix = (vals: (string | null | undefined)[], shown: string | null) => {
+    const c = new Map<string, number>()
+    vals.forEach((v) => v && c.set(v, (c.get(v) ?? 0) + 1))
+    const total = [...c.values()].reduce((a, b) => a + b, 0)
+    return {
+      top: shown ? `${shown} (${c.get(shown) ?? 0} of ${total})` : '',
+      others: [...c.entries()].filter(([k]) => k !== shown).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} (${n})`),
+    }
+  }
+  const shapeMix = state === 'solid' ? mix(result.map((t) => t.normalized.geometry), geometry) : { top: '', others: [] as string[] }
+  const dirMix = state === 'solid' ? mix(result.map((t) => t.normalized.flow_direction), direction) : { top: '', others: [] as string[] }
   const burner: BurnerKind = BURNER[psiShown[0] ?? ''] ?? 'jet'
 
   // The ending the 3D view plays: the most common recorded outcome.
@@ -232,7 +247,8 @@ export default function Lab({ data }: { data: Dataset }) {
       <aside className="order-2 lg:order-none lg:border-r border-rule bg-card xl:overflow-y-auto p-5 space-y-6 lg:row-span-2 xl:row-span-1">
         <div>
           <h1 className="font-serif font-semibold text-2xl">Experiment Lab</h1>
-          <p className="caption mt-1">Every choice below is a value NASA recorded. Each one narrows the others.</p>
+          <p className="caption mt-1">Every choice below is a value NASA recorded (airflow is converted from the fan reading with
+            NASA's calibration). Each one narrows the others.</p>
         </div>
 
         <Group title="1 · What is burning">
@@ -254,7 +270,8 @@ export default function Lab({ data }: { data: Dataset }) {
         <Group title={`3 · ${state === 'solid' ? 'Material' : 'Fuel'}`}>
           <div className="flex flex-wrap gap-1.5">
             {materialOptions.map(([m, c]) => (
-              <button key={m} onClick={() => setMaterial((p) => ({ ...p, [state]: m }))} className={`chip ${chosen === m ? 'chip-on' : ''}`}>
+              <button key={m} onClick={() => setMaterial((p) => ({ ...p, [state]: m }))} className={`chip ${chosen === m ? 'chip-on' : ''}`}
+                      title={data.literature.glossary.find((g) => g.term === m)?.plain}>
                 {m} <span className="num text-[12px] text-mute">{c}</span>
               </button>
             ))}
@@ -337,13 +354,25 @@ export default function Lab({ data }: { data: Dataset }) {
             )}
           </div>
           <figcaption className="figcap">
-            <b>Fig. 1.</b> {describeSample(shape, chosen, sampleDims, d0, state, lengthCm, widthCm)}
-            {state === 'solid' && flowText && <>, {flowText} cm/s {direction ?? '(direction not recorded)'} airflow</>}
-            {o2Text && <>, {o2Text}% O₂</>}{(!sel.o2 && o2Text?.includes('–')) && ' (recorded range)'}. {ENDING_WORDS[state][ending]}. {endingNote}{' '}
-            {outcomes.spreadRate
-              ? <>Recorded spread rate {outcomes.spreadRate.median.toFixed(1)} mm/s; the animation is a time-lapse.</>
-              : <>Spread pace is compressed and illustrative.</>}{' '}
-            Flame colour and size are illustration; shape, orientation and ending follow the data.{' '}
+            {partialG ? (
+              <><b>Fig. 1.</b> No flame is drawn: none of the PSI tests ran at {gravity === 'moon' ? '0.16 g' : '0.38 g'}. Measured
+                lunar-gravity results from NASA work outside PSI are listed on the right.{' '}</>
+            ) : (
+              <>
+                <b>Fig. 1.</b> Drawn: {describeSample(shape, chosen, sampleDims, d0, state, lengthCm, widthCm)}
+                {state === 'solid' && direction && <>, {direction} airflow</>}
+                {shapeMix.others.length > 0 || dirMix.others.length > 0 ? (
+                  <> (the most common {shapeMix.others.length > 0 ? `shape, ${shapeMix.top}` : ''}{shapeMix.others.length > 0 && dirMix.others.length > 0 ? ', and ' : ''}{dirMix.others.length > 0 ? `direction, ${dirMix.top}` : ''}
+                    {' '}among the matching tests; they also include {[...shapeMix.others, ...dirMix.others].join(', ')})</>
+                ) : null}.{' '}
+                Recorded conditions: {state === 'solid' && flowText ? `${flowText} cm/s airflow, ` : ''}{o2Text ? `${o2Text}% O₂` : 'oxygen not recorded'}
+                {(!sel.o2 && o2Text?.includes('–')) ? ' (range)' : ''}. {ENDING_WORDS[state][ending]}. {endingNote}{' '}
+                {outcomes.spreadRate
+                  ? <>Recorded spread rate {outcomes.spreadRate.median.toFixed(1)} mm/s; the animation is a time-lapse.</>
+                  : <>Spread pace is compressed and illustrative.</>}{' '}
+                Flame colour and size are illustration; shape, orientation and ending follow the data.{' '}
+              </>
+            )}
             <span className="text-mute">Source: {result.length} matching test{result.length === 1 ? '' : 's'}{psiShown.length ? `, ${psiShown.map((p) => invLabel(data, p)).join(', ')}` : ''}.</span>
           </figcaption>
         </figure>
@@ -422,6 +451,7 @@ export default function Lab({ data }: { data: Dataset }) {
 
             {outcomes.quotes.length > 0 && gravity === '0g' && (
               <Block title="In NASA's words">
+                <p className="caption mb-2">“Pot” is the fan potentiometer setting; “HCl”, “HCN” and “CO” are gas-sensor readings. See the <a href="#/about">glossary</a>.</p>
                 <div className="space-y-3">
                   {outcomes.quotes.map((q) => (
                     <blockquote key={q.test} className="border-l-2 border-rule pl-3 small text-ink2">

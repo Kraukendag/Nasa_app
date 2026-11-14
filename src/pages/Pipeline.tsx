@@ -25,18 +25,16 @@ export default function Pipeline({ data }: { data: Dataset }) {
   const extracted = bass2.filter((t) => !!t.normalized.outcome_text && (t.normalized.outcome_source ?? '').startsWith('NASA/TM'))
   const pages = [...new Set(extracted.map((t) => (t.normalized.outcome_source ?? '').match(/p\. (\d+)/)?.[1]).filter(Boolean))].sort()
   const examples = EXAMPLES.map((id) => bass2.find((t) => t.test_number === id)).filter(Boolean) as typeof bass2
-  const classes = new Map<string, { label: string; n: number }>()
-  extracted.forEach((t) => {
-    const c = t.normalized.outcome_class
-    if (c) classes.set(c, { label: t.normalized.outcome ?? c, n: (classes.get(c)?.n ?? 0) + 1 })
-  })
   const flags = Object.values(f.anomaly_summary).reduce((a, b) => a + b, 0)
+  // Every BASS-II count comes from one place (findings.bass2_counts), so the
+  // same number reads the same on every page.
+  const bc = f.bass2_counts
   const withOutcome = data.tests.filter((t) => t.normalized.outcome_class).length
 
   const steps: [string, string, string][] = [
     ['Collect', 'NASA PSI tables and reports', `14 CSV tables (${data.tests.length.toLocaleString()} rows) downloaded from NASA Physical Sciences Informatics, the BASS-II Summary Report (NASA/TM-20210011385), the BASS-II fan calibration, and six NASA Technical Reports Server documents.`],
     ['Read and clean', 'scripts/loaders.py', `One loader per table. Units are converted (mmHg, atm and psi to kPa; mole fractions to %), names are unified ("100% C2H4" and "Ethylene" are one substance), and ${flags} problems are flagged across ${Object.keys(f.anomaly_summary).length} types. No row is deleted and no value is changed.`],
-    ['Extract with AI', 'data_raw/BASS-II_AppendixA_transcribed.csv', `The test matrices on report pages ${pages[0]}–${pages[pages.length - 1]} were transcribed with AI assistance into a table: test number, flow direction and the observation, word for word, with its page. ${extracted.length} BASS-II tests gained an ending this way.`],
+    ['Extract with AI', 'data_raw/BASS-II_AppendixA_transcribed.csv', `The test matrices on report pages ${pages[0]}–${pages[pages.length - 1]} were transcribed with AI assistance into a table: test number, flow direction and the observation, word for word, with its page. ${bc.transcribed} tests are in the matrices; ${bc.observations} have a written observation (none for ${bc.observation_missing.join(', ')}), and ${bc.endings_report} of those could be given an ending category.`],
     ['Check', 'cross-check and spot-check', 'Machine cross-check against the PSI table, then a manual spot-check of ten rows against the report pages (details below).'],
     ['Classify', 'rules in scripts/loaders.py', 'Each observation is sorted into an ending category by written rules (keywords such as "blowoff", "turned flow off", "extinguished at pot"). NASA\'s own words are always shown next to the category.'],
     ['Derive', 'scripts/derive.py, build_data.py', `Material cards, findings, negative knowledge, coverage, ${f.research_questions.length} research questions and the FLEX model, all computed from the rows.`],
@@ -45,13 +43,13 @@ export default function Pipeline({ data }: { data: Dataset }) {
 
   return (
     <Page title="Data pipeline" intro={<>
-      How 1,450 rows of NASA records became this site, and the one place AI did essential work: reading the endings of
-      {' '}{extracted.length} experiments out of a 144-page NASA report, where no table had them.
+      How 1,450 rows of NASA records became this site, and the one place AI did essential work: reading {bc.observations}{' '}
+      test observations out of a 144-page NASA report, where no table had them. {bc.endings_report} of them say how the test ended.
     </>}>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 card p-6">
         <Stat value={data.tests.length.toLocaleString()} label="rows from 14 PSI tables" />
-        <Stat value={extracted.length} label="endings extracted from the report" />
+        <Stat value={`${bc.observations} / ${bc.endings_report}`} label="observations / endings extracted from the report" />
         <Stat value={withOutcome} label="tests with a recorded ending" />
         <Stat value={flags} label="data-quality flags, nothing deleted" />
       </div>
@@ -138,17 +136,25 @@ export default function Pipeline({ data }: { data: Dataset }) {
         <p className="small text-ink2 mt-4 max-w-3xl">{f.transcription_note}</p>
       </Section>
 
-      <Section title="From NASA's words to a category" intro="The rules that sort each observation, and how many BASS-II tests landed in each category.">
+      <Section title="From NASA's words to a category" intro={<>
+        The rules that sort each observation, and how many BASS-II tests landed in each category. Of the {bc.observations}{' '}
+        observations, {bc.endings_report} fit a category; {bc.no_category.length} describe the run without saying how it
+        ended ({bc.no_category.join(', ')}) and are left uncategorised.
+      </>}>
         <div className="card overflow-x-auto">
           <table className="tbl min-w-[620px]">
-            <thead><tr><th>Category on this site</th><th>Meaning</th><th className="text-right">BASS-II tests</th></tr></thead>
+            <thead><tr><th>Category on this site</th><th>Meaning</th><th className="text-right">From the report</th><th className="text-right">All BASS-II</th></tr></thead>
             <tbody>
-              {[...classes.entries()].sort((a, b) => b[1].n - a[1].n).map(([c, v]) => (
-                <tr key={c}><td>{v.label}</td><td className="text-ink2">{OUTCOME_MEANINGS[c] ?? ''}</td><td className="text-right num">{v.n}</td></tr>
+              {Object.entries(bc.by_class).sort((a, b) => b[1] - a[1]).map(([c, n]) => (
+                <tr key={c}><td>{f.outcome_labels[c] ?? c}</td><td className="text-ink2">{OUTCOME_MEANINGS[c] ?? ''}</td>
+                  <td className="text-right num">{bc.by_class_report[c] ?? 0}</td><td className="text-right num">{n}</td></tr>
               ))}
+              <tr className="font-medium"><td>Total</td><td /><td className="text-right num">{bc.endings_report}</td><td className="text-right num">{bc.endings_total}</td></tr>
             </tbody>
           </table>
         </div>
+        <p className="caption mt-2">“All BASS-II” adds {bc.endings_table.join(', ')}, a 2016 test that is not in the report; its ending is read from the PSI
+          table’s own airflow cell. These are the numbers every other page uses.</p>
       </Section>
 
       <Section title="The one model, and how honest it is" intro={<>

@@ -101,7 +101,8 @@ export interface Investigation {
   outcome_fraction: number
   has_1g_reference: boolean
   max_sample_length_cm: number | null
-  scale_class: 'large' | 'glovebox' | 'chamber' | 'cabin'
+  scale_class: 'large' | 'medium' | 'glovebox' | 'chamber' | 'cabin'
+  max_sample_area_cm2: number | null
   embedded_notes: string[]
   anomaly_count: number
 }
@@ -179,10 +180,18 @@ export interface Recommendation {
   questions: string[]
 }
 
-export interface LiteratureSource { title: string; authors: string; venue: string; ntrs: string; url: string }
+export interface LiteratureSource {
+  title: string; authors: string; venue: string; ntrs: string; url: string
+  /** Who published it: NASA itself, or a society/conference (NASA researchers). */
+  tier: 'nasa_report' | 'nasa_research_elsewhere'
+  publisher: string
+  reliability: string
+}
+export interface GlossaryEntry { term: string; plain: string; quote: string; source: string; where: string }
 export interface LiteraturePoint { source: string; g: number; material: string; quantity: string; value: number; unit: string; compare_1g: number; where: string }
 export interface SaffireRow { sample: string; material: string; length_cm: number; flow_cm_s: number; direction: string; pressure_kpa: number; o2_percent: number }
 export interface Literature {
+  glossary: GlossaryEntry[]
   sources: Record<string, LiteratureSource>
   points: LiteraturePoint[]
   luci_notes: string[]
@@ -227,6 +236,11 @@ export interface Findings {
   flamelets: { test: string; text: string; source: string }[]
   recommendations: Recommendation[]
   spot_check: { checked: string[]; result: string; pages: number[] }
+  bass2_counts: {
+    tests_in_table: number; transcribed: number; observations: number; observation_missing: string[]
+    endings_report: number; no_category: string[]; endings_table: string[]; endings_total: number
+    by_class: Record<string, number>; by_class_report: Record<string, number>
+  }
   cross_check: { checked: number; agree: number; rule: string; disagree: { test: string; cell: string; category: string; report: string }[] }
   not_included: { name: string; psi_id: string | null; doi: string | null }[]
   anomaly_summary: Record<string, number>

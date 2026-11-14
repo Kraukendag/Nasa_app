@@ -105,7 +105,7 @@ def build_research_questions(s):
       ["SAFFIRE_VI_ICES2024"])
     q(A, "What is the lowest oxygen level at which PMMA sustains a flame in microgravity, across the full range of airflow?",
       "Defines how far oxygen must drop before a cabin fire cannot survive.",
-      f"In BASS-II a PMMA rod sustained a flame at {s['pmma_min_o2']}% O2 (test {s['pmma_min_test']}); attempts at {s['pmma_fail_range']} failed. Olson (2004): cellulose burns at 14% O2 with spacecraft-like flow, against 16.5% on Earth.",
+      f"In BASS-II a PMMA rod sustained a flame at {s['pmma_min_o2']}% O2 (test {s['pmma_min_test']}); attempts at {s['pmma_fail_range']} did not sustain one. For a cellulose fuel (not PMMA), Olson (2004) reports burning at 14% O2 with spacecraft-like flow, against 16.5% on Earth.",
       "The limit has not been mapped against airflow for flat PMMA, only for rods at a few flows.",
       "SoFIE on ISS.",
       "Extinction oxygen level vs airflow (1-30 cm/s) for PMMA slabs and rods.",
@@ -256,11 +256,11 @@ def build_research_questions(s):
       ["PSI-98", "PSI-99", "PSI-25"])
     q(I, "Why do flames self-extinguish at steady airflow in microgravity?",
       "A flame that dies on its own without intervention changes how a crew should respond.",
-      f"{s['self_ext_n']} BASS-II flames went out by themselves at steady flow ({s['self_ext_ids']}). LUCI's report notes gravity stayed constant, so extinction must be caused by other factors.",
+      f"{s['self_ext_n']} BASS-II flames went out by themselves at steady flow ({s['self_ext_ids']}).",
       "The cause (oxygen depletion, heat loss, fuel geometry) is not separated.",
       "Tests with local oxygen and temperature probes.",
       "Local oxygen, radiant heat loss and fuel regression at extinction.",
-      ["PSI-25", "LUCI"])
+      ["PSI-25"])
     q(I, "At what droplet size does radiation put out a flame?",
       "Large spills burn differently from small droplets.",
       f"FLEX recorded visible-extinction diameters from {s['dext_min']:.2f} to {s['dext_max']:.2f} mm (median {s['dext_median']:.2f} mm).",
