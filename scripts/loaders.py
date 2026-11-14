@@ -437,7 +437,7 @@ def load_appendix_a():
 
 def load_psi20():
     """ACME BRE -- 18 daily summary rows of gaseous burner tests."""
-    _, rows = read_csv("PSI-20_ACME-BRE.csv")
+    _, rows = read_csv("PSI-20_Experimental table_ACME BRE.csv")
     out = []
     for i, row in enumerate(rows, start=1):
         anomalies = []
@@ -481,7 +481,7 @@ def load_psi20():
 
 def load_psi22():
     """ACME E-FIELD -- 21 test rows + 11 note-only continuation rows."""
-    _, rows = read_csv("PSI-22_ACME-EFIELD.csv")
+    _, rows = read_csv("PSI-22_Experimental table_ACME E-FIELD Flames.csv")
     out, seen = [], set()
     for i, row in enumerate(rows, start=1):
         test_type = clean(row.get("Test Type"))
@@ -515,7 +515,7 @@ def load_psi22():
 
 def load_psi25():
     """BASS-II -- 129 solid-fuel tests, plus outcomes from the report."""
-    _, rows = read_csv("PSI-25_BASS-II.csv")
+    _, rows = read_csv("PSI-25_Experimental_table_BASS-II.csv")
     appendix = load_appendix_a()
     out = []
     for i, row in enumerate(rows, start=1):
@@ -623,7 +623,7 @@ def load_psi25():
 
 def load_psi26():
     """BASS -- 122 rows. The table records materials and dates only."""
-    _, rows = read_csv("PSI-26_BASS.csv")
+    _, rows = read_csv("PSI-26_Experimental table_BASS.csv")
     out = []
     for i, row in enumerate(rows, start=1):
         anomalies = []
@@ -676,7 +676,7 @@ def load_psi26():
 
 def load_psi39():
     """CFI -- 87 droplet tests across pressures. Diameter is not recorded."""
-    _, rows = read_csv("PSI-39_CFI.csv")
+    _, rows = read_csv("PSI-39_Experimental table_CFI.csv")
     out, seen = [], set()
     for i, row in enumerate(rows, start=1):
         anomalies = []
@@ -709,7 +709,7 @@ def load_psi39():
 
 def load_psi47():
     """DAFT -- 2 dust-aerosol sampling sessions."""
-    _, rows = read_csv("PSI-47_DAFT.csv")
+    _, rows = read_csv("PSI-47_Experimental table_DAFT.csv")
     out = []
     for i, row in enumerate(rows, start=1):
         normalized = blank_normalized(
@@ -725,7 +725,7 @@ def load_psi47():
 
 def load_psi68():
     """FLEX-2 -- 8 rows describing parameter RANGES, not individual tests."""
-    _, rows = read_csv("PSI-68_FLEX-2.csv")
+    _, rows = read_csv("PSI-68_Experimental table_Flex2.csv")
     out = []
     for i, row in enumerate(rows, start=1):
         fuel_raw = clean(row.get("Sample (Fuel Type)"))
@@ -746,7 +746,7 @@ def load_psi68():
 
 def load_psi69():
     """FLEX -- 274 droplet tests WITH recorded outcomes (cp1252 file)."""
-    _, rows = read_csv("PSI-69_FLEX.csv", encoding="cp1252")
+    _, rows = read_csv("PSI-69_Experimental table_FLEX.csv", encoding="cp1252")
     out = []
     for i, row in enumerate(rows, start=1):
         anomalies, flags = [], []
@@ -803,7 +803,7 @@ def load_psi69():
 
 def load_saffire1():
     """SAFFIRE-I -- 2 large SIBAL burns + 2 pre-test flow-visualisation rows."""
-    _, rows = read_csv("PSI-98_SAFFIRE-1.csv")
+    _, rows = read_csv("PSI-98_Experimental table_SAFFIRE-1.csv")
     out = []
     for i, row in enumerate(rows, start=1):
         sample = clean(row.get("Sample Number"))
@@ -857,7 +857,7 @@ def _length_cm(text):
 
 def load_saffire2():
     """SAFFIRE-II -- 9 samples with BOTH microgravity and 1 g burn results."""
-    _, rows = read_csv("PSI-99_SAFFIRE-2.csv")
+    _, rows = read_csv("PSI-99_Experimental table_SAFFIRE-2.csv")
     out, last_material = [], None
     for i, row in enumerate(rows, start=1):
         sample = clean(row.get("Sample Number"))
@@ -964,7 +964,7 @@ def load_saffire2():
 
 def load_saffire3():
     """SAFFIRE-III -- 2 large SIBAL burns at 30 cm/s. No burn results recorded."""
-    _, rows = read_csv("PSI-100_SAFFIRE-3.csv")
+    _, rows = read_csv("PSI-100_Experimental table_SAFFIRE-3.csv")
     out = []
     for i, row in enumerate(rows, start=1):
         thickness_cm = to_float(row.get("Sample Thickness"))
@@ -985,7 +985,7 @@ def load_saffire3():
 
 def load_psi101():
     """SAME-R -- 109 smoke-aging tests on heated (non-flaming) samples."""
-    _, rows = read_csv("PSI-101_SAME-R.csv")
+    _, rows = read_csv("PSI-101_Experimental table_SAME-R.csv")
     out = []
     for i, row in enumerate(rows, start=1):
         anomalies = []
@@ -1013,7 +1013,7 @@ def load_psi101():
 
 def load_psi107():
     """SPICE -- 469 gas-jet smoke-point tests."""
-    _, rows = read_csv("PSI-107_SPICE.csv")
+    _, rows = read_csv("PSI-107_Experimental table_Spice.csv")
     out = []
     for i, row in enumerate(rows, start=1):
         anomalies = []
@@ -1047,7 +1047,7 @@ def load_psi107():
 
 def load_psi159():
     """CFI-G -- 179 tests separating cool flames from hot ignition."""
-    _, rows = read_csv("PSI-159_CFI-G.csv")
+    _, rows = read_csv("PSI-159_Experimental table_CFI-G_Normal Flames.csv")
     out = []
     for i, row in enumerate(rows, start=1):
         anomalies, flags = [], []

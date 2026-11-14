@@ -56,6 +56,17 @@ def _():
     assert (len(tests) - notes - vis, notes, vis) == (1431, 15, 4), (notes, vis)
 
 
+@check("NASA's raw files are untouched (SHA-256 matches data_raw/SHA256SUMS.txt)")
+def _():
+    import hashlib
+    with open(os.path.join(ROOT, "data_raw", "SHA256SUMS.txt"), encoding="utf-8") as f:
+        sums = [l.split("  ", 1) for l in f.read().splitlines() if l and not l.startswith("#")]
+    assert len([n for _, n in sums if n.startswith("PSI-")]) == 14, "expected 14 PSI tables"
+    for digest, name in sums:
+        with open(os.path.join(ROOT, "data_raw", name), "rb") as fh:
+            assert hashlib.sha256(fh.read()).hexdigest() == digest, f"{name} was modified"
+
+
 @check("raw cells are kept exactly; a blank cell is never turned into 0")
 def _():
     for t in tests:

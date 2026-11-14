@@ -30,6 +30,10 @@ public/data/*.json   (tests, investigations, materials, findings, flex_model, li
 dist/                the finished static site
 ```
 
+`data_raw/` holds the 14 NASA PSI experimental tables exactly as downloaded from PSI, under
+PSI's own file names, with SHA-256 fingerprints in `data_raw/SHA256SUMS.txt`; `npm test` fails if
+any of them is modified.
+
 The website never runs Python and never calls a server. It loads six JSON files when it
 opens and then works offline.
 
