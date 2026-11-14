@@ -1316,6 +1316,31 @@ def main():
         print(f"  {psi_id:8} {INVESTIGATION_META[psi_id]['acronym']:14} "
               f"{len(records):4d} rows{suffix}")
 
+    # ----- Settle inconsistent capitalisation -------------------------------
+    # CFI-G writes "propane" and "ethane" in lower case while SPICE writes
+    # "Propane" and "Ethylene" capitalised. They are the same fuels, so left
+    # alone the website would list each one twice and split its tests between
+    # the two. We pick one spelling per fuel -- preferring the capitalised
+    # form, which reads better -- and point every row at it. The original
+    # string stays untouched in `material_raw`.
+    canonical = {}
+    for test in all_tests:
+        name = test["normalized"].get("material")
+        if not name:
+            continue
+        key = name.lower()
+        # Prefer a version that starts with a capital letter.
+        if key not in canonical or (name[:1].isupper() and not canonical[key][:1].isupper()):
+            canonical[key] = name
+    merged = 0
+    for test in all_tests:
+        name = test["normalized"].get("material")
+        if name and canonical[name.lower()] != name:
+            test["normalized"]["material"] = canonical[name.lower()]
+            merged += 1
+    if merged:
+        print(f"  merged {merged} rows onto a consistent material spelling")
+
     # Attach the pre-built search string to each record.
     for test in all_tests:
         test["search_text"] = build_search_text(test)

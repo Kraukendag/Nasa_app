@@ -16,171 +16,7 @@ import { Canvas, useFrame } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import { useRef, useState } from 'react'
 import * as THREE from 'three'
-
-interface FlameProps { lit: boolean; gravityOn: boolean }
-
-/** The flame itself: three nested translucent shells plus a bright core.
- *
- *  Shape is driven by one number, `stretch`, which the frame loop eases
- *  towards its target. In 1 g the flame is stretched upward and offset so it
- *  sits above the match head, the way buoyancy carries hot gas. In 0 g it is
- *  pulled back into a sphere centred on the head, because there is no "up".
- */
-function Flame({ lit, gravityOn }: FlameProps) {
-  const group = useRef<THREE.Group>(null)
-  const core = useRef<THREE.Mesh>(null)
-  const light = useRef<THREE.PointLight>(null)
-
-  // Current (animated) values. We ease towards the targets every frame so
-  // switching gravity is a morph, not a jump cut.
-  const current = useRef({ stretch: 0, lift: 0, size: 0, warmth: 0 })
-
-  useFrame((state, delta) => {
-    const t = state.clock.elapsedTime
-    const c = current.current
-
-    // Where we want to be, given the two switches.
-    const targetStretch = gravityOn ? 1 : 0           // 1 = tall, 0 = round
-    const targetLift    = gravityOn ? 0.30 : 0.045    // how far above the head
-    const targetSize    = lit ? 1 : 0                 // 0 collapses the flame away
-    const targetWarmth  = gravityOn ? 1 : 0           // 1 = orange, 0 = blue
-
-    // Ease: move a fraction of the remaining distance each frame. Framerate
-    // independent because the fraction scales with delta.
-    const ease = (from: number, to: number, speed: number) =>
-      from + (to - from) * Math.min(1, delta * speed)
-
-    c.stretch = ease(c.stretch, targetStretch, 3.5)
-    c.lift    = ease(c.lift,    targetLift,    3.5)
-    c.size    = ease(c.size,    targetSize,    lit ? 7 : 11)
-    c.warmth  = ease(c.warmth,  targetWarmth,  3.5)
-
-    if (!group.current) return
-
-    // Flicker only under gravity. A microgravity diffusion flame is famously
-    // steady, so the 0 g flame holds almost perfectly still.
-    const flicker = gravityOn
-      ? 1 + Math.sin(t * 11) * 0.05 + Math.sin(t * 23.7) * 0.025
-      : 1 + Math.sin(t * 2.2) * 0.008
-
-    const height = (0.42 + c.stretch * 0.95) * c.size * flicker
-    const width  = (0.30 - c.stretch * 0.10) * c.size
-
-    group.current.scale.set(width, height, width)
-    group.current.position.y = 0.52 + c.lift * c.size
-    // Under gravity the plume leans with a slow convection drift.
-    group.current.rotation.z = gravityOn ? Math.sin(t * 1.6) * 0.045 : 0
-
-    // Colour: blue at 0 g (a clean, soot-free diffusion flame) warming to
-    // orange at 1 g (buoyancy drags in air, soot forms, it glows yellow).
-    const cold = new THREE.Color('#2F7FE8')
-    const hot  = new THREE.Color('#FFB23D')
-    if (core.current) {
-      const material = core.current.material as THREE.MeshBasicMaterial
-      material.color.copy(cold).lerp(hot, c.warmth)
-      material.opacity = 0.95 * c.size
-    }
-    if (light.current) {
-      light.current.color.copy(cold).lerp(hot, c.warmth)
-      light.current.intensity = (gravityOn ? 7 : 3.6) * c.size * flicker
-      light.current.position.y = group.current.position.y
-    }
-  })
-
-  // Each shell is a sphere; the group's non-uniform scale turns them into the
-  // teardrop. Additive blending makes overlapping shells glow where they meet.
-  const shells = [
-    { radius: 1.00, colour: '#1E63C8', opacity: 0.20 },
-    { radius: 0.72, colour: '#3C96E8', opacity: 0.30 },
-    { radius: 0.45, colour: '#9FD4F5', opacity: 0.45 },
-  ]
-
-  return (
-    <>
-      <pointLight ref={light} position={[0, 0.8, 0]} distance={9} decay={2} />
-      <group ref={group}>
-        {shells.map((shell, i) => (
-          <mesh key={i} position={[0, 0.12, 0]}>
-            <sphereGeometry args={[shell.radius, 28, 28]} />
-            <meshBasicMaterial
-              color={shell.colour}
-              transparent
-              opacity={shell.opacity}
-              blending={THREE.AdditiveBlending}
-              depthWrite={false}
-            />
-          </mesh>
-        ))}
-        {/* The bright centre, which carries the blue-to-orange colour shift. */}
-        <mesh ref={core} position={[0, 0.05, 0]}>
-          <sphereGeometry args={[0.30, 24, 24]} />
-          <meshBasicMaterial
-            transparent
-            blending={THREE.AdditiveBlending}
-            depthWrite={false}
-          />
-        </mesh>
-      </group>
-    </>
-  )
-}
-
-/** Sparks that rise off the flame. They only exist under gravity, because in
- *  microgravity there is no buoyant current to carry anything upward. */
-function Sparks({ lit, gravityOn }: FlameProps) {
-  const points = useRef<THREE.Points>(null)
-  const COUNT = 36
-
-  // Give each spark a random lane and speed once, then recycle it forever.
-  const seeds = useRef(
-    Array.from({ length: COUNT }, () => ({
-      x: (Math.random() - 0.5) * 0.3,
-      z: (Math.random() - 0.5) * 0.3,
-      speed: 0.5 + Math.random() * 0.9,
-      offset: Math.random(),
-    })),
-  )
-
-  useFrame((state) => {
-    if (!points.current) return
-    const visible = lit && gravityOn
-    points.current.visible = visible
-    if (!visible) return
-
-    const t = state.clock.elapsedTime
-    const positions = points.current.geometry.attributes.position as THREE.BufferAttribute
-    seeds.current.forEach((seed, i) => {
-      // `progress` runs 0 -> 1 then wraps, carrying the spark up and out.
-      const progress = ((t * seed.speed + seed.offset) % 1)
-      positions.setXYZ(
-        i,
-        seed.x * (1 + progress * 2.4) + Math.sin(t * 3 + i) * 0.03,
-        0.75 + progress * 1.9,
-        seed.z * (1 + progress * 2.4),
-      )
-    })
-    positions.needsUpdate = true
-    ;(points.current.material as THREE.PointsMaterial).opacity = 0.55
-  })
-
-  return (
-    <points ref={points}>
-      <bufferGeometry>
-        <bufferAttribute
-          attach="attributes-position"
-          args={[new Float32Array(COUNT * 3), 3]}
-        />
-      </bufferGeometry>
-      <pointsMaterial
-        size={0.035}
-        color="#FFC66B"
-        transparent
-        blending={THREE.AdditiveBlending}
-        depthWrite={false}
-      />
-    </points>
-  )
-}
+import FlameMesh from './FlameMesh'
 
 /** The matchstick: a wooden shaft with a dark head that chars once lit. */
 function Matchstick({ lit }: { lit: boolean }) {
@@ -239,17 +75,26 @@ export default function TabMatch({ onOpenLab }: { onOpenLab: () => void }) {
     <div className="relative flex-1 min-h-0 flex flex-col">
       {/* ---------- 3D viewport ---------- */}
       <div className="absolute inset-0">
-        <Canvas camera={{ position: [0, 0.6, 5.2], fov: 42 }} dpr={[1, 2]}>
+        <Canvas camera={{ position: [0, 0.9, 6.2], fov: 40 }} dpr={[1, 1.5]}>
           <color attach="background" args={['#070B12']} />
           <fog attach="fog" args={['#070B12', 7, 15]} />
           <ambientLight intensity={0.12} />
           <directionalLight position={[4, 6, 4]} intensity={0.35} />
           <Matchstick lit={lit} />
-          <Flame lit={lit} gravityOn={gravityOn} />
-          <Sparks lit={lit} gravityOn={gravityOn} />
+          {/* The flame sits on the match head at y = 0.75 (the stick group is
+              offset to -0.9 and the head is 1.65 above its base). */}
+          <FlameMesh
+            lit={lit}
+            gravityOn={gravityOn}
+            intensity={0.72}
+            soot={1}
+            scale={1.4}
+            position={[0, 0.75, 0]}
+          />
           <Floor gravityOn={gravityOn} />
           <OrbitControls
             enablePan={false}
+            target={[0, 0.35, 0]}
             minDistance={3}
             maxDistance={9}
             minPolarAngle={0.25}
