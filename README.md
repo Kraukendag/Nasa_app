@@ -128,5 +128,8 @@ BASS-II airflow uses NASA's calibration: velocity (cm/s) = Air display × 1.0066
   per-test table, Saffire IV-VI (selected Saffire IV-VI and LUCI values appear on the
   Findings page as cited literature, never mixed into PSI counts).
 
+Licence: MIT for the code (see LICENSE); NASA data and imagery as published by NASA. After the first
+visit the site opens offline (service worker in public/sw.js).
+
 Not affiliated with or endorsed by NASA. No NASA branding is used. A research summary,
 not a material certification or a safety approval.
