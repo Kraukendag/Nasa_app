@@ -36,6 +36,7 @@ import { useMemo, useRef, useState } from 'react'
 import type { MutableRefObject } from 'react'
 import * as THREE from 'three'
 import VolumeFlame from './VolumeFlame'
+import { lowPower, startQuality, useInView } from '../three/perf'
 import type { FlameSource } from '../three/volumeFlame'
 import type { Regime } from '../lab/regime'
 
@@ -101,7 +102,7 @@ function rng(seed: number) {
 //  Shared pieces: airflow, apparatus outline, igniter
 // -----------------------------------------------------------------------------
 function Airflow({ flowCmS, direction, height }: { flowCmS: number; direction: Dir; height: number }) {
-  const COUNT = 200
+  const COUNT = lowPower ? 70 : 200
   const ref = useRef<THREE.Points>(null)
   const dot = useMemo(() => {
     const c = document.createElement('canvas'); c.width = c.height = 32
@@ -222,10 +223,19 @@ function SheetSample({ p }: { p: Scenep }) {
   const px = (x: number) => ((x + W / 2) / W) * 128
   const py = (yDown: number) => (yDown / H) * 256
 
+  const lastKey = useRef('')
   useFrame(() => {
     const t = tl.current.t
     const f = ph.current
     const yFront = f.p * H
+    // Redraw only when something visible changed (phones choked on uploading
+    // two canvases every frame): front row, flamelet step, brightness steps.
+    const re = tl.current.reignite
+    const key = sim
+      ? `${Math.floor(Math.max(0, (t - IGN * 0.6) - sim.breakP * SPREAD_S) / sim.dt)}|${Math.round(f.p * 256)}|${Math.round(f.alive * 12)}|${re != null && t > re ? Math.round(Math.min(1, (t - re) / 1.6) * 12) : 0}`
+      : `${Math.round(f.p * 256)}|${Math.round(f.alive * 12)}|${Math.round(f.endU * 12)}`
+    if (key === lastKey.current) return
+    lastKey.current = key
     const out: FlameSource[] = []
     const ec = emberCtx
     ec.clearRect(0, 0, 128, 256)
@@ -261,7 +271,6 @@ function SheetSample({ p }: { p: Scenep }) {
         }
         painted.current = step
         const flames = sim.steps[step]
-        const re = tl.current.reignite
         const u = re != null && t > re ? Math.min(1, (t - re) / 1.6) : 0
         const meanY = flames.reduce((a, b) => a + b.y, 0) / Math.max(1, flames.length)
         for (const fl of flames.slice(0, 14)) {
@@ -540,17 +549,24 @@ function Scene(props: SpecimenProps & { quality: number }) {
 }
 
 export default function Specimen(props: SpecimenProps) {
-  const [quality, setQuality] = useState(1)
+  const [quality, setQuality] = useState(startQuality)
+  const wrap = useRef<HTMLDivElement>(null)
+  const inView = useInView(wrap)
   return (
-    <Canvas camera={{ position: [2.4, 0.9, 3.6], fov: 40 }} dpr={[1, quality < 1 ? 1 : 1.5]}
-            gl={{ antialias: true, powerPreference: 'high-performance' }}>
-      <PerformanceMonitor onDecline={() => setQuality(0.5)} onIncline={() => setQuality(1)} />
-      <color attach="background" args={['#0B0F17']} />
-      <ambientLight intensity={0.45} />
-      <directionalLight position={[3, 5, 4]} intensity={0.8} />
-      <directionalLight position={[-3, 1, -3]} intensity={0.25} color="#9fb8ff" />
-      <Scene key={props.runKey} {...props} quality={quality} />
-      <OrbitControls enablePan={false} minDistance={2.2} maxDistance={8} target={[0, 0, 0]} makeDefault />
-    </Canvas>
+    <div ref={wrap} className="h-full" role="img"
+         aria-label={`3D view: ${props.shape} sample, ${props.gravity === '1g' ? 'normal gravity' : 'microgravity'}, ${props.regime.label}. Illustration; the text below lists the NASA evidence.`}>
+      {/* Off-screen or hidden tab: stop rendering entirely (saves phones). */}
+      <Canvas frameloop={inView ? 'always' : 'never'} camera={{ position: [2.4, 0.9, 3.6], fov: 40 }}
+              dpr={lowPower ? 0.75 : quality < 1 ? 1 : [1, 1.5]}
+              gl={{ antialias: !lowPower, powerPreference: 'high-performance' }}>
+        <PerformanceMonitor onDecline={() => setQuality((q) => (q > 0.5 ? 0.5 : 0.3))} onIncline={() => setQuality((q) => (lowPower ? Math.min(0.5, q + 0.2) : 1))} />
+        <color attach="background" args={['#0B0F17']} />
+        <ambientLight intensity={0.45} />
+        <directionalLight position={[3, 5, 4]} intensity={0.8} />
+        {!lowPower && <directionalLight position={[-3, 1, -3]} intensity={0.25} color="#9fb8ff" />}
+        <Scene key={props.runKey} {...props} quality={quality} />
+        <OrbitControls enablePan={false} minDistance={2.2} maxDistance={8} target={[0, 0, 0]} makeDefault />
+      </Canvas>
+    </div>
   )
 }

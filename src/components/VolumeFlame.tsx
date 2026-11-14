@@ -49,7 +49,7 @@ export default function VolumeFlame({ sources, box, center, offset = [0, 0, 0], 
     uP: { value: Array.from({ length: MAX_SOURCES }, () => new THREE.Vector4()) },
     uQ: { value: Array.from({ length: MAX_SOURCES }, () => new THREE.Vector4(0, 1, 0, 0)) },
     uTime: { value: 0 }, uFlicker: { value: flicker }, uSooty: { value: sooty }, uDim: { value: dim },
-    uSteps: { value: 48 },
+    uSteps: { value: 48 }, uLow: { value: 0 },
   }), []) // eslint-disable-line react-hooks/exhaustive-deps
   const tmp = useMemo(() => new THREE.Vector3(), [])
 
@@ -93,7 +93,9 @@ export default function VolumeFlame({ sources, box, center, offset = [0, 0, 0], 
     u.uFlicker.value = e.flicker
     u.uSooty.value = e.sooty
     u.uDim.value = e.dim
-    u.uSteps.value = quality < 1 ? 26 : 48
+    // Steps per pixel by quality: desktop 48, slow computer 26, phone 14.
+    u.uSteps.value = quality >= 1 ? 48 : quality >= 0.5 ? 26 : 14
+    u.uLow.value = quality < 1 ? 1 : 0
 
     if (lamp.current && list[bestI]) {
       const s = list[bestI]

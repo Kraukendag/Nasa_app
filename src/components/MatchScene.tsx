@@ -21,6 +21,7 @@
 import { OrbitControls, PerformanceMonitor } from '@react-three/drei'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { useMemo, useRef, useState } from 'react'
+import { lowPower, reducedMotion, startQuality, useInView } from '../three/perf'
 import * as THREE from 'three'
 import VolumeFlame from './VolumeFlame'
 import type { FlameSource } from '../three/volumeFlame'
@@ -103,24 +104,31 @@ function Match({ lit, gravityOn, quality }: { lit: boolean; gravityOn: boolean; 
       <mesh position={[0, HEAD_Y, 0]}><sphereGeometry args={[0.115, 24, 20]} /><meshStandardMaterial ref={head} color="#9E2B2B" roughness={0.6} /></mesh>
       {/* The marching box follows the flame (and its rising plume). */}
       <VolumeFlame sources={flame} box={[1.1, 2.1, 1.1]}
-                   flicker={gNow ? 1 : 0.06} sooty={gNow ? 0.95 : 0.15} dim={gNow ? 1 : 0.9}
+                   flicker={reducedMotion ? 0 : gNow ? 1 : 0.06} sooty={gNow ? 0.95 : 0.15} dim={gNow ? 1 : 0.9}
                    quality={quality} light />
     </group>
   )
 }
 
 export default function MatchScene({ lit, gravityOn }: { lit: boolean; gravityOn: boolean }) {
-  const [quality, setQuality] = useState(1)
+  const [quality, setQuality] = useState(startQuality)
+  const wrap = useRef<HTMLDivElement>(null)
+  const inView = useInView(wrap)
   return (
-    <Canvas camera={{ position: [0, 0.4, 4.6], fov: 40 }} dpr={[1, quality < 1 ? 1 : 1.5]}
-            onCreated={({ gl }) => { gl.localClippingEnabled = true }}>
-      {/* Drops the flame's ray-march steps on slower computers. */}
-      <PerformanceMonitor onDecline={() => setQuality(0.5)} onIncline={() => setQuality(1)} />
-      <color attach="background" args={['#0B0F17']} />
-      <ambientLight intensity={0.25} />
-      <directionalLight position={[3, 5, 4]} intensity={0.6} />
-      <Match lit={lit} gravityOn={gravityOn} quality={quality} />
-      <OrbitControls enablePan={false} minDistance={2.6} maxDistance={8} target={[0, 0.1, 0]} autoRotate={!lit} autoRotateSpeed={0.5} />
-    </Canvas>
+    <div ref={wrap} className="h-full" role="img"
+         aria-label={`3D match, ${lit ? 'burning' : 'unlit'}, gravity ${gravityOn ? 'on: a tall, flickering yellow flame' : 'off: a small, round, blue flame'}. Illustration.`}>
+      {/* Off-screen or hidden tab: stop rendering entirely (saves phones). */}
+      <Canvas frameloop={inView ? 'always' : 'never'} camera={{ position: [0, 0.4, 4.6], fov: 40 }}
+              dpr={lowPower ? 0.75 : quality < 1 ? 1 : [1, 1.5]} gl={{ antialias: !lowPower, powerPreference: 'high-performance' }}
+              onCreated={({ gl }) => { gl.localClippingEnabled = true }}>
+        {/* Drops the flame's ray-march steps when the frame rate falls. */}
+        <PerformanceMonitor onDecline={() => setQuality((q) => (q > 0.5 ? 0.5 : 0.3))} onIncline={() => setQuality((q) => (lowPower ? Math.min(0.5, q + 0.2) : 1))} />
+        <color attach="background" args={['#0B0F17']} />
+        <ambientLight intensity={0.25} />
+        <directionalLight position={[3, 5, 4]} intensity={0.6} />
+        <Match lit={lit} gravityOn={gravityOn} quality={quality} />
+        <OrbitControls enablePan={false} minDistance={2.6} maxDistance={8} target={[0, 0.1, 0]} autoRotate={!lit && !reducedMotion} autoRotateSpeed={0.5} />
+      </Canvas>
+    </div>
   )
 }

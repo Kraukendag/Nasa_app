@@ -72,6 +72,7 @@ export const volumeFragmentShader = /* glsl */ `
   uniform float uSooty;               // 0 clean blue .. 1 sooty yellow
   uniform float uDim;                 // overall brightness
   uniform float uSteps;
+  uniform float uLow;                 // 1 = cheap mode (phones): one noise octave, no warp
 
   // ---- cheap 3D value noise (enough for licking flame edges) ----
   float hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
@@ -94,18 +95,26 @@ export const volumeFragmentShader = /* glsl */ `
   // The flame field at point p: returns (heat, soot share).
   vec2 field(vec3 p) {
     // Turbulence carries the gas along: strong under buoyancy, slight in 0 g.
-    vec3 w = vec3(fbm(p * 5.0 + vec3(0.0, -uTime * 2.2, 0.0)),
-                  fbm(p * 5.0 + vec3(3.1, -uTime * 2.0, 1.7)),
-                  fbm(p * 5.0 + vec3(5.2, -uTime * 2.4, 4.4))) - 0.5;
-    p += w * (0.02 + 0.09 * uFlicker);
+    // Cheap mode: a single noise lookup instead of three 3-octave ones.
+    if (uLow > 0.5) {
+      float n = noise(p * 5.0 + vec3(0.0, -uTime * 2.2, 0.0)) - 0.5;
+      p += vec3(n, n * 0.6, -n) * (0.02 + 0.09 * uFlicker);
+    } else {
+      vec3 w = vec3(fbm(p * 5.0 + vec3(0.0, -uTime * 2.2, 0.0)),
+                    fbm(p * 5.0 + vec3(3.1, -uTime * 2.0, 1.7)),
+                    fbm(p * 5.0 + vec3(5.2, -uTime * 2.4, 4.4))) - 0.5;
+      p += w * (0.02 + 0.09 * uFlicker);
+    }
     float heat = 0.0, soot = 0.0;
     for (int i = 0; i < MAX_SOURCES; i++) {
       if (i >= uCount) break;
       vec4 P = uP[i]; vec4 Q = uQ[i];
       if (P.w <= 0.001) continue;
-      vec3 a = normalize(Q.xyz);
       vec3 q = p - uPos[i];
       if (Q.w > 0.0) q.x -= clamp(q.x, -Q.w, Q.w);          // line source along x
+      // Skip a source that is far from this point (most of them, for flamelets).
+      if (dot(q, q) > P.x * P.x * (9.0 + 12.0 * P.y * (1.0 + P.y))) continue;
+      vec3 a = normalize(Q.xyz);
       float along = dot(q, a);
       vec3 perp = q - a * along;
       float r = P.x;
@@ -119,7 +128,8 @@ export const volumeFragmentShader = /* glsl */ `
       float skin = exp(-pow((d - r * 0.92) / (0.22 * r), 2.0));
       float h = P.w * mix(core, skin * 0.95 + core * 0.12, P.z);
       // Flickering tip: noise eats the top of a buoyant flame.
-      h *= 1.0 - uFlicker * 0.6 * smoothstep(0.35, 1.0, down / len) * fbm(p * 7.0 - vec3(0.0, uTime * 3.0, 0.0));
+      if (uFlicker > 0.05) h *= 1.0 - uFlicker * 0.6 * smoothstep(0.35, 1.0, down / len)
+        * (uLow > 0.5 ? noise(p * 7.0 - vec3(0.0, uTime * 3.0, 0.0)) : fbm(p * 7.0 - vec3(0.0, uTime * 3.0, 0.0)));
       heat += h;
       // Soot lives in the hot core and downstream, not at the base or the skin.
       soot += h * smoothstep(-0.2 * r, 0.6 * r, along) * (1.0 - P.z * 0.7);
