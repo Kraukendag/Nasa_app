@@ -20,7 +20,7 @@
 
 import { OrbitControls, PerformanceMonitor } from '@react-three/drei'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { lowPower, reducedMotion, startQuality, useInView } from '../three/perf'
 import * as THREE from 'three'
 import VolumeFlame from './VolumeFlame'
@@ -58,7 +58,7 @@ const HEAD_COLOUR = new THREE.Color('#9E2B2B')
 const SPENT_COLOUR = new THREE.Color('#2A1410')
 
 function Match({ lit, gravityOn, quality }: { lit: boolean; gravityOn: boolean; quality: number }) {
-  const s = useRef({ stage: 'unlit' as Stage, t: 0, p: 0, alive: 0, flare: 0, g: gravityOn ? 1 : 0, phi: 0.6, lastFront: 99 })
+  const s = useRef({ stage: 'unlit' as Stage, t: 0, p: 0, alive: 0, flare: 0, g: gravityOn ? 1 : 0, phi: 0.6, lastFront: 99, headScale: 1 })
   const head = useRef<THREE.MeshStandardMaterial>(null)
   const headMesh = useRef<THREE.Mesh>(null)
   // The charred part of the stick is a finely divided tube whose vertices are
@@ -66,6 +66,7 @@ function Match({ lit, gravityOn, quality }: { lit: boolean; gravityOn: boolean; 
   // and curls to one side, the way burnt match wood crumples.
   const charGeo = useMemo(() => new THREE.CylinderGeometry(0.05, 0.054, 2.2, 16, 140), [])
   const charBase = useMemo(() => Float32Array.from(charGeo.attributes.position.array as Float32Array), [charGeo])
+  useEffect(() => () => charGeo.dispose(), [charGeo])      // free GPU memory on unmount
   const ember = useRef<THREE.MeshBasicMaterial>(null)
   const emberMesh = useRef<THREE.Mesh>(null)
   const flame = useRef<FlameSource[]>([{ pos: [0, HEAD_Y, 0], radius: 0.12, stretch: 1, shell: 0, power: 0 }])
@@ -122,10 +123,17 @@ function Match({ lit, gravityOn, quality }: { lit: boolean; gravityOn: boolean; 
       pos.needsUpdate = true
       charGeo.computeVertexNormals()
     }
-    // The spent head rides on the curled tip and shrinks a little.
+    // The head shrinks as it burns. Physics: the head compound is the first
+    // fuel consumed (strike + the first ~1.2 s), so most of the loss happens
+    // there; afterwards the charred residue keeps losing a little mass while
+    // the flame is still close, then stops once the flame has moved far away.
+    const headStage = m.stage === 'unlit' ? 0 : m.stage === 'strike' ? 0.4 * (m.t / STRIKE_S) : m.stage === 'burning' && m.t < 1.2 ? 0.4 + 0.6 * (m.t / 1.2) : 1
+    const charLoss = THREE.MathUtils.smoothstep(m.p, 0, 0.6)      // slows as the flame moves away
+    m.headScale = 1 - 0.24 * headStage - 0.14 * charLoss
+    // The spent head rides on the curled tip.
     if (headMesh.current) {
       headMesh.current.position.set(tip[0], tip[1] + (HEAD_Y - STICK_TOP - 0.04), tip[2])
-      headMesh.current.scale.setScalar(1 - 0.22 * THREE.MathUtils.smoothstep(STICK_TOP - front, 0, 0.35))
+      headMesh.current.scale.setScalar(m.headScale)
     }
     if (head.current) head.current.color.lerp(lit ? SPENT_COLOUR : HEAD_COLOUR, Math.min(1, delta * 2.5))
     if (ember.current && emberMesh.current) {
@@ -154,7 +162,7 @@ function Match({ lit, gravityOn, quality }: { lit: boolean; gravityOn: boolean; 
   )
 }
 
-export default function MatchScene({ lit, gravityOn }: { lit: boolean; gravityOn: boolean }) {
+export default function MatchScene({ lit, gravityOn, onContextLost }: { lit: boolean; gravityOn: boolean; onContextLost?: () => void }) {
   const [quality, setQuality] = useState(startQuality)
   const wrap = useRef<HTMLDivElement>(null)
   const inView = useInView(wrap)
@@ -164,7 +172,11 @@ export default function MatchScene({ lit, gravityOn }: { lit: boolean; gravityOn
       {/* Off-screen or hidden tab: stop rendering entirely (saves phones). */}
       <Canvas frameloop={inView ? 'always' : 'never'} camera={{ position: [0, 0.4, 4.6], fov: 40 }}
               dpr={lowPower ? 0.75 : quality < 1 ? 1 : [1, 1.5]} gl={{ antialias: !lowPower, powerPreference: 'high-performance' }}
-              onCreated={({ gl }) => { gl.localClippingEnabled = true }}>
+              onCreated={({ gl }) => {
+                gl.localClippingEnabled = true
+                // A lost GPU context (driver reset, too many tabs): switch to 2D.
+                gl.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); onContextLost?.() }, { once: true })
+              }}>
         {/* Drops the flame's ray-march steps when the frame rate falls. */}
         <PerformanceMonitor onDecline={() => setQuality((q) => (q > 0.5 ? 0.5 : 0.3))} onIncline={() => setQuality((q) => (lowPower ? Math.min(0.5, q + 0.2) : 1))} />
         <color attach="background" args={['#0B0F17']} />

@@ -22,6 +22,8 @@ import FlammabilityMap from '../components/FlammabilityMap'
 import Schematic from '../components/Schematic'
 import type { BurnerKind, Ending, SampleShape, Timeline } from '../components/Specimen'
 import { decideRegime } from '../lab/regime'
+import WebGLErrorBoundary, { isWebGLAvailable } from '../components/WebGLErrorBoundary'
+import VolumeFlameFallback2D from '../three/VolumeFlameFallback2D'
 import type { Regime } from '../lab/regime'
 import { DIMENSIONS, applySelection, optionsFor, recorded } from '../lab/dimensions'
 import type { Option, Selection, State } from '../lab/dimensions'
@@ -276,6 +278,8 @@ export default function Lab({ data, arg = null }: { data: Dataset; arg?: string 
   const regime: Regime = decideRegime({ ...regimeInput, gravity: partialG ? 'none' : gravity === '1g' ? '1g' : '0g', ending })
   // The normal-gravity twin for the side-by-side view (SAFFIRE-II recorded both).
   const tl = useRef<Timeline>({ t: 0, playing: false, duration: 1, reignite: null, phase: 'Ready' })
+  // 2D schematic when the device has no WebGL, when 3D fails, or on request.
+  const [use2D, setUse2D] = useState(() => !isWebGLAvailable().webgl1)
   const runKey = [shape, regime.behaviour, ending, gravity, flowShown, direction, chosen].join('|')
   // New conditions start a new run (instead of jumping mid-burn).
   // New conditions: stop and wait for Ignite (runs only start by hand).
@@ -372,18 +376,22 @@ export default function Lab({ data, arg = null }: { data: Dataset; arg?: string 
               <PartialGravity gravity={gravity} />
             ) : (
               <Suspense fallback={<div className="h-full grid place-items-center text-slate-400 small">Loading 3D view…</div>}>
-                <Specimen shape={shape} dims={sampleDims} lit={lit && !neverLit} gravity={gravity === '1g' ? '1g' : '0g'}
+{use2D ? <VolumeFlameFallback2D shape={shape} gravity={gravity === '1g' ? '1g' : '0g'} lit={lit && !neverLit} regime={regime} /> : (
+                  <WebGLErrorBoundary fallback={<VolumeFlameFallback2D shape={shape} gravity={gravity === '1g' ? '1g' : '0g'} lit={lit && !neverLit} regime={regime} />} onError={() => setUse2D(true)}>
+                                <Specimen shape={shape} dims={sampleDims} lit={lit && !neverLit} gravity={gravity === '1g' ? '1g' : '0g'}
                           regime={regime} timeline={tl} runKey={runKey} o2={o2Shown}
                           flowCmS={state === 'solid' ? flowShown : null} direction={state === 'solid' ? direction : null}
                           fuel={chosen} droplet={state === 'liquid' ? { d0: d0 ?? 2.5, dExt, burnTime: burnT } : null}
-                          fiber={fiberAll} burner={burner} burnerSizeMm={burnerMm} />
+                          onContextLost={() => setUse2D(true)} fiber={fiberAll} burner={burner} burnerSizeMm={burnerMm} />
+                  </WebGLErrorBoundary>
+                )}
               </Suspense>
             )}
             {!partialG && (
               <RunControls lit={lit} neverLit={neverLit} canStart={result.length > 0} state={state}
                            timeline={tl} regime={regime}
                            onIgnite={() => { setLit(true); tl.current.t = 0; tl.current.reignite = null; tl.current.playing = true }}
-                           onReset={() => setLit(false)}
+                           onReset={() => setLit(false)} use2D={use2D} toggle2D={() => setUse2D((v) => !v)}
                            endNote={top ? `It stopped here on purpose: the most common ending among the matching NASA tests is “${top.label}” (${top.count} of ${outcomes.withOutcome}${top.count * 2 > outcomes.withOutcome ? ', a majority' : ''}), so the flame does not burn the whole sample.` : 'It stopped here: the matching tests record no ending, so this part is illustration.'} />
             )}
             {!partialG && lit && neverLit && (
@@ -821,9 +829,9 @@ function RealImagery({ psi, shape, material }: { psi: string[]; shape: string; m
 
 /** Start and restart the run by hand (it is short, so no skipping), plus the
  *  one extra action NASA's evidence allows (airflow back up for flamelets). */
-function RunControls({ lit, neverLit, canStart, state, timeline, regime, onIgnite, onReset, endNote }: {
+function RunControls({ lit, neverLit, canStart, state, timeline, regime, onIgnite, onReset, endNote, use2D, toggle2D }: {
   lit: boolean; neverLit: boolean; canStart: boolean; state: State; timeline: React.MutableRefObject<Timeline>; regime: Regime
-  onIgnite: () => void; onReset: () => void; endNote: string
+  onIgnite: () => void; onReset: () => void; endNote: string; use2D: boolean; toggle2D: () => void
 }) {
   // The 3D scene owns the clock; poll it ten times a second for the UI.
   const [view, setView] = useState({ t: 0, d: 1, phase: 'Ready', re: false })
@@ -869,6 +877,9 @@ function RunControls({ lit, neverLit, canStart, state, timeline, regime, onIgnit
             {view.re ? 'Airflow turned up' : 'Turn the airflow back up'}
           </button>
         )}
+        <button onClick={toggle2D} className="px-3 py-2 rounded-md text-[13px] text-white border border-white/30 hover:bg-white/10">
+          {use2D ? 'Switch to 3D WebGL' : 'Switch to 2D schematic'}
+        </button>
         <span className="hud text-slate-300 hidden md:inline ml-auto">drag to orbit · scroll to zoom</span>
       </div>
     </div>

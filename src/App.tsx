@@ -37,8 +37,19 @@ const NAV: { id: PageId; label: string }[] = [
 ]
 const PAGES = new Set<string>(['home', ...NAV.map((n) => n.id)])
 
+/** Other names people use for pages (from project descriptions). */
+const ALIASES: Record<string, PageId> = {
+  'lunar-habitat': 'habitat', simulator: 'lab', '3d-simulator': 'lab', database: 'data', 'future-research': 'questions',
+}
+
 function readHash(): { page: PageId; arg: string | null } {
-  const [, page, arg] = window.location.hash.split('/')
+  const [, raw, ...rest] = window.location.hash.split('/')
+  // An alias rewrites the address to the real page (no extra history entry).
+  if (raw && ALIASES[raw]) {
+    window.history.replaceState(null, '', `#/${ALIASES[raw]}${rest.length ? '/' + rest.join('/') : ''}`)
+  }
+  const page = ALIASES[raw] ?? raw
+  const arg = rest[0]
   return { page: (PAGES.has(page) ? page : 'home') as PageId, arg: arg ? decodeURIComponent(arg) : null }
 }
 

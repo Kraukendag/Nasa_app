@@ -13,6 +13,8 @@ import SiliconeChart from '../components/SiliconeChart'
 
 // Three.js is loaded only when a 3D view is on screen.
 const MatchScene = lazy(() => import('../components/MatchScene'))
+import WebGLErrorBoundary, { isWebGLAvailable } from '../components/WebGLErrorBoundary'
+import MatchSceneFallback2D from '../three/MatchSceneFallback2D'
 
 const SITE = [
   ['#/habitat', 'Lunar habitat', 'Five evidence-backed recommendations for a habitat at 30% oxygen and one-sixth gravity.'],
@@ -28,6 +30,8 @@ const SITE = [
 export default function Home({ data }: { data: Dataset }) {
   const [lit, setLit] = useState(false)
   const [gravityOn, setGravityOn] = useState(true)
+  // 2D schematic when the device has no WebGL, when 3D fails, or on request.
+  const [use2D, setUse2D] = useState(() => !isWebGLAvailable().webgl1)
   const withOutcome = data.tests.filter((t) => t.normalized.outcome_class).length
   const bc = data.findings.bass2_counts
   const f = data.findings
@@ -64,7 +68,11 @@ export default function Home({ data }: { data: Dataset }) {
         <figure className="figure">
           <div className="viewport h-[360px] sm:h-[440px] rounded-none">
             <Suspense fallback={<div className="h-full grid place-items-center text-slate-400 text-sm">Loading 3D view…</div>}>
-              <MatchScene lit={lit} gravityOn={gravityOn} />
+              {use2D ? <MatchSceneFallback2D lit={lit} gravityOn={gravityOn} /> : (
+                <WebGLErrorBoundary fallback={<MatchSceneFallback2D lit={lit} gravityOn={gravityOn} />} onError={() => setUse2D(true)}>
+                  <MatchScene lit={lit} gravityOn={gravityOn} onContextLost={() => setUse2D(true)} />
+                </WebGLErrorBoundary>
+              )}
             </Suspense>
             <div className="absolute bottom-3 left-3 right-3 flex flex-wrap items-center gap-2">
               <button onClick={() => setLit((v) => !v)} className="px-4 py-2 rounded-md text-sm font-medium bg-white text-ink hover:bg-slate-100">
@@ -74,6 +82,10 @@ export default function Home({ data }: { data: Dataset }) {
                 <button onClick={() => setGravityOn(true)} className={`px-3 py-2 ${gravityOn ? 'bg-white text-ink' : 'text-slate-200 hover:bg-white/10'}`}>Gravity on (1 g)</button>
                 <button onClick={() => setGravityOn(false)} className={`px-3 py-2 ${!gravityOn ? 'bg-white text-ink' : 'text-slate-200 hover:bg-white/10'}`}>Microgravity</button>
               </div>
+              <button onClick={() => setUse2D((v) => !v)}
+                      className="px-3 py-2 rounded-md text-sm text-slate-200 border border-white/20 hover:bg-white/10">
+                {use2D ? 'Switch to 3D WebGL' : 'Switch to 2D schematic'}
+              </button>
             </div>
           </div>
           <figcaption className="figcap">

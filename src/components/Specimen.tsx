@@ -32,7 +32,7 @@
 
 import { Html, OrbitControls, PerformanceMonitor } from '@react-three/drei'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MutableRefObject } from 'react'
 import * as THREE from 'three'
 import VolumeFlame from './VolumeFlame'
@@ -67,8 +67,10 @@ export interface SpecimenProps {
   burnerSizeMm?: number | null
   /** Changing this restarts the run (new conditions). */
   runKey?: string
-  /** Small label drawn in the scene, e.g. "0 g" / "1 g" in the split view. */
+  /** Small label drawn in the scene. */
   tag?: string
+  /** Called if the GPU context is lost, so the Lab can switch to 2D. */
+  onContextLost?: () => void
 }
 
 // -----------------------------------------------------------------------------
@@ -217,6 +219,7 @@ function SheetSample({ p }: { p: Scenep }) {
     t1.colorSpace = THREE.SRGBColorSpace
     return { charTex: t1, emberTex: t2, charCtx: a.getContext('2d')!, emberCtx: b.getContext('2d')! }
   }, [])
+  useEffect(() => () => { charTex.dispose(); emberTex.dispose() }, [charTex, emberTex])   // free GPU memory
   const painted = useRef(-1)
   const base = shape === 'fabric' ? '#D9CBA8' : shape === 'composite sheet' ? '#C9B79A' : shape === 'film' ? '#D6E0EA' : '#CBD3DF'
   const char = shape === 'film' ? '#6E6A66' : '#231E1B'
@@ -558,7 +561,8 @@ export default function Specimen(props: SpecimenProps) {
       {/* Off-screen or hidden tab: stop rendering entirely (saves phones). */}
       <Canvas frameloop={inView ? 'always' : 'never'} camera={{ position: [2.4, 0.9, 3.6], fov: 40 }}
               dpr={lowPower ? 0.75 : quality < 1 ? 1 : [1, 1.5]}
-              gl={{ antialias: !lowPower, powerPreference: 'high-performance' }}>
+              gl={{ antialias: !lowPower, powerPreference: 'high-performance' }}
+              onCreated={({ gl }) => { gl.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); props.onContextLost?.() }, { once: true }) }}>
         <PerformanceMonitor onDecline={() => setQuality((q) => (q > 0.5 ? 0.5 : 0.3))} onIncline={() => setQuality((q) => (lowPower ? Math.min(0.5, q + 0.2) : 1))} />
         <color attach="background" args={['#0B0F17']} />
         <ambientLight intensity={0.45} />
