@@ -57,7 +57,7 @@ ANOMALY_DESCRIPTIONS = {
     "zero_fuel_rate": "Fuel rate recorded as zero.",
     "non_numeric_frame_count": "Frame count holds a word such as 'none' or 'video'.",
     "sensor_over_range": "A gas reading exceeded its measurable range ('OR').",
-    "spreadsheet_division_error": "Cell holds a spreadsheet #DIV/0! error.",
+    "spreadsheet_division_error": "NASA's spreadsheet shows #DIV/0! (Tad, Zst): the fuel fraction in the flow (Xf) is 0, so its formulas divided by zero. Kept as written.",
     "not_applicable_cell": "Cell recorded as not applicable.",
     "unreadable_cell": "Cell contains bytes that could not be decoded.",
     "approximate_value": "Value written as approximate ('~').",

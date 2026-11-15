@@ -360,7 +360,7 @@ def build_negative_knowledge(all_tests, doi_of):
         ("sensor_over_range", "CO sensor over range", "Carbon monoxide exceeded the sensor's range ('OR')."),
         ("telemetry_loss", "Telemetry lost during tests", "Time columns record Ku-band loss of signal."),
         ("unreadable_cell", "Unreadable cells in the FLEX table", "Bytes in the source file cannot be decoded."),
-        ("spreadsheet_division_error", "Spreadsheet #DIV/0! errors", "A formula divided by a zero fuel fraction."),
+        ("spreadsheet_division_error", "Spreadsheet #DIV/0! errors", "NASA's CFI-G spreadsheet shows Excel's #DIV/0! in the flame-temperature (Tad) and mixture-fraction (Zst) columns. In these rows the fuel fraction in the flow (Xf) and the fuel flow are 0: no fuel was flowing, the burner never lit, and the formulas divided by zero. The cells are kept as NASA wrote them."),
         ("inconsistent_ignition_record", "Ignition column contradicts the burn time",
          "Hot ignition is 'No' yet a burn time and termination are recorded."),
         ("unit_inconsistency_across_tables", "SIBAL thickness recorded in different units",

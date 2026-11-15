@@ -18,6 +18,9 @@ const TYPES: [string, string][] = [
   ['record', 'Test records'], ['finding', 'Findings'], ['negative', 'What failed'], ['question', 'Research questions'],
   ['material', 'Materials'], ['recommendation', 'Habitat recommendations'], ['literature', 'NASA reports'], ['glossary', 'Glossary'],
 ]
+/** Lowest similarity shown (see the measurement note in run()). */
+const MIN_SCORE = 0.28
+
 const EXAMPLES = [
   'flames that went out when the airflow was turned down',
   'materials that burn on Earth but not in space',
@@ -33,18 +36,25 @@ export default function Search({ data }: { data: Dataset }) {
   const [state, setState] = useState<'idle' | 'loading' | 'error'>('idle')
   const [err, setErr] = useState('')
   const [progress, setProgress] = useState<number | null>(null)
+  const [tooShort, setTooShort] = useState(false)
   const [mode, setMode] = useState<{ mode: 'semantic' | 'lexical'; reason?: string } | null>(null)
   const { strictPsiOnly } = useDataMode()
   useEffect(() => { onModelProgress((f) => setProgress(f)); return () => onModelProgress(null) }, [])
 
   const run = async (text: string) => {
     if (!text.trim()) return
-    setQ(text); setState('loading')
+    setQ(text)
+    // A single letter has no meaning to compare; ask for a real word or question.
+    if (!/[a-z0-9]{3,}/i.test(text)) { setHits([]); setMode(null); setTooShort(true); return }
+    setTooShort(false); setState('loading')
     // Strict PSI mode leaves out items that come only from NASA reports outside PSI.
     const keep = (d: SearchDoc) => (!types.size || types.has(d.type)) && (!strictPsiOnly || d.strict)
     try {
       const r = await searchWithFallback(text, 25, keep)
-      setHits(r.hits); setMode({ mode: r.mode, reason: r.reason }); setState('idle')
+      // Similarity below MIN_SCORE is noise: measured, nonsense queries ("hello", "pizza recipe": 0.25-0.26;
+      // real questions score 0.45-0.72 at the top).
+      setHits(r.mode === 'semantic' ? r.hits.filter((h) => h.score >= MIN_SCORE) : r.hits)
+      setMode({ mode: r.mode, reason: r.reason }); setState('idle')
     }
     catch (e) { setErr((e as Error).message); setState('error') }
   }
@@ -86,6 +96,12 @@ export default function Search({ data }: { data: Dataset }) {
             {mode?.mode === 'lexical' && (
               <p className="wash p-3 small text-ink2 mb-3" aria-live="polite"><b className="text-ink">Keyword fallback:</b> {mode.reason}, so these
                 results match your words, not their meaning. Search again once the model has loaded for AI results.</p>
+            )}
+            {hits.length === 0 && (
+              <p className="wash p-4 small text-ink2">
+                {tooShort ? 'Type at least one word (three letters or more), or a question in plain words.'
+                  : <>Nothing in the data is close in meaning to this. Try a full question, for example “materials that burn on Earth but not in space”{types.size ? ', or turn off the type filters' : ''}.</>}
+              </p>
             )}
             {strictPsiOnly && <p className="caption mb-3">Strict PSI mode: items that come only from NASA reports outside PSI are left out, and BASS-II rows are shown without their Appendix A notes.</p>}
             <ol className="divide-y divide-rule border-y border-rule">
