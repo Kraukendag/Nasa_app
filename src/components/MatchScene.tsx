@@ -16,11 +16,23 @@
 //  (Before, progress was "time since lighting / duration", and the duration
 //  changed with gravity, so a switch teleported the flame or un-burned the
 //  stick.)
+//
+//  TURN THE MATCH (drag it)
+//  ------------------------
+//  The match body sits in a group you can rotate; the flame does NOT turn with
+//  it. With gravity, hot gas always rises, so the flame points straight up
+//  whichever way the match is held, and the burn speed depends on the tilt:
+//  head up, the flame rises AWAY from the wood and creeps down slowly; held
+//  sideways it spreads about twice as fast; head down it climbs onto fresh
+//  wood, about four times as fast (upward flame spread is faster than
+//  downward spread). In microgravity there is no "up": the flame stays a
+//  round shell and the tilt changes nothing. Speeds are illustrative.
 // =============================================================================
 
 import { OrbitControls, PerformanceMonitor } from '@react-three/drei'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { MutableRefObject } from 'react'
 import { lowPower, reducedMotion, startQuality, useInView } from '../three/perf'
 import * as THREE from 'three'
 import VolumeFlame from './VolumeFlame'
@@ -34,6 +46,12 @@ const SLOWER_IN_0G = 1.6     // without buoyancy the flame creeps more slowly
 const STRIKE_S = 0.45        // the bright flare when the head ignites
 
 type Stage = 'unlit' | 'strike' | 'burning' | 'out'
+/** How the match is held, judged by which way the flame front moves along it. */
+export type Tilt = 'upright' | 'sideways' | 'down'
+const PIVOT_Y = -0.3                    // the match turns around its middle
+/** With gravity: how much faster the front moves, from 1x (head up, front moving
+ *  down) through 2x (sideways) to 4x (head down, front climbing up). */
+const tiltSpeed = (up: number) => Math.pow(4, (up + 1) / 2)
 
 /** Where a point of the stick (x, y, z in world units, y up) ends up once the
  *  flame front at height `front` has passed it. Below the front: unchanged.
@@ -57,7 +75,13 @@ function crumple(x: number, y: number, z: number, front: number, phi: number): [
 const HEAD_COLOUR = new THREE.Color('#9E2B2B')
 const SPENT_COLOUR = new THREE.Color('#2A1410')
 
-function Match({ lit, gravityOn, quality }: { lit: boolean; gravityOn: boolean; quality: number }) {
+function Match({ lit, gravityOn, quality, turn, onTilt }: {
+  lit: boolean; gravityOn: boolean; quality: number
+  turn: MutableRefObject<THREE.Quaternion>; onTilt?: (t: Tilt) => void
+}) {
+  const outer = useRef<THREE.Group>(null)          // rotates (around the pivot)
+  const body = useRef<THREE.Group>(null)           // the match itself, in its own coordinates
+  const tmp = useMemo(() => ({ v: new THREE.Vector3(), d: new THREE.Vector3(), tilt: 'upright' as Tilt }), [])
   const s = useRef({ stage: 'unlit' as Stage, t: 0, p: 0, alive: 0, flare: 0, g: gravityOn ? 1 : 0, phi: 0.6, lastFront: 99, headScale: 1 })
   const head = useRef<THREE.MeshStandardMaterial>(null)
   const headMesh = useRef<THREE.Mesh>(null)
@@ -70,8 +94,12 @@ function Match({ lit, gravityOn, quality }: { lit: boolean; gravityOn: boolean; 
   const ember = useRef<THREE.MeshBasicMaterial>(null)
   const emberMesh = useRef<THREE.Mesh>(null)
   const flame = useRef<FlameSource[]>([{ pos: [0, HEAD_Y, 0], radius: 0.12, stretch: 1, shell: 0, power: 0 }])
+  // The cut between wood and char. three.js clips in SCENE coordinates, so the
+  // planes are worked out along the match and then turned with it every frame.
   const planes = useMemo(() => ({ below: new THREE.Plane(new THREE.Vector3(0, -1, 0), STICK_TOP),
-                                  above: new THREE.Plane(new THREE.Vector3(0, 1, 0), -STICK_TOP) }), [])
+                                  above: new THREE.Plane(new THREE.Vector3(0, 1, 0), -STICK_TOP),
+                                  localBelow: new THREE.Plane(new THREE.Vector3(0, -1, 0), STICK_TOP),
+                                  localAbove: new THREE.Plane(new THREE.Vector3(0, 1, 0), -STICK_TOP) }), [])
 
   useFrame((_, rawDelta) => {
     const delta = Math.min(rawDelta, 0.1)        // a background tab must not skip the whole burn
@@ -79,13 +107,24 @@ function Match({ lit, gravityOn, quality }: { lit: boolean; gravityOn: boolean; 
     // Ease the gravity blend so the flame shape morphs instead of snapping.
     m.g += ((gravityOn ? 1 : 0) - m.g) * Math.min(1, delta * 2.5)
 
+    // Turn the match smoothly toward where it was dragged.
+    if (outer.current && body.current) {
+      outer.current.quaternion.slerp(turn.current, Math.min(1, delta * 12))
+      outer.current.updateMatrixWorld()
+    }
+    // Which way does the flame front travel? Along the stick, from head to base.
+    const up = tmp.d.set(0, -1, 0).applyQuaternion(outer.current?.quaternion ?? new THREE.Quaternion()).y
+    const tilt: Tilt = up < -0.5 ? 'upright' : up > 0.5 ? 'down' : 'sideways'
+    if (tilt !== tmp.tilt) { tmp.tilt = tilt; onTilt?.(tilt) }
+
     if (!lit) { m.stage = 'unlit'; m.t = 0; m.p = 0 }
     else if (m.stage === 'unlit') { m.stage = 'strike'; m.t = 0; m.phi = Math.random() * Math.PI * 2 }   // each match curls its own way
     if (m.stage === 'strike') { m.t += delta; if (m.t > STRIKE_S) { m.stage = 'burning'; m.t = 0 } }
     if (m.stage === 'burning') {
       m.t += delta
       // Progress grows at the CURRENT rate; switching gravity changes speed only.
-      const rate = 1 / (BURN_S * (gravityOn ? 1 : SLOWER_IN_0G))
+      // With gravity the tilt matters (see the header); in microgravity it doesn't.
+      const rate = (gravityOn ? tiltSpeed(up) : 1) / (BURN_S * (gravityOn ? 1 : SLOWER_IN_0G))
       if (m.t > 1.2) m.p = Math.min(1, m.p + delta * rate)   // the head burns first
       if (m.p >= 1) { m.stage = 'out'; m.t = 0 }
     }
@@ -97,14 +136,22 @@ function Match({ lit, gravityOn, quality }: { lit: boolean; gravityOn: boolean; 
     m.flare = m.stage === 'strike' ? Math.sin((m.t / STRIKE_S) * Math.PI) : Math.max(0, m.flare - delta * 3)
 
     const y = STICK_TOP - m.p * BURN_LENGTH
-    planes.below.constant = y
-    planes.above.constant = -y
+    planes.localBelow.constant = y
+    planes.localAbove.constant = -y
+    if (body.current) {
+      planes.below.copy(planes.localBelow).applyMatrix4(body.current.matrixWorld)
+      planes.above.copy(planes.localAbove).applyMatrix4(body.current.matrixWorld)
+    }
     const onHead = m.stage === 'strike' || (m.stage === 'burning' && m.t < 1.2)
     const fy = onHead ? HEAD_Y : y + 0.05
 
     // The flame as a volumetric source: buoyant teardrop (1 g) or round shell (0 g).
+    // It sits on the burning spot, wherever the turned match puts it, but its
+    // axis stays straight up: hot gas rises whichever way the match points.
     const f = flame.current[0]
-    f.pos = [0, fy, 0]
+    const w = body.current ? body.current.localToWorld(tmp.v.set(0, fy, 0)) : tmp.v.set(0, fy, 0)
+    f.pos = [w.x, w.y, w.z]
+    f.axis = [0, 1, 0]
     f.radius = THREE.MathUtils.lerp(0.19, 0.22, m.g) * (1 + m.flare * 0.6)
     f.stretch = THREE.MathUtils.lerp(0.12, 2.6, m.g)
     f.shell = THREE.MathUtils.lerp(0.75, 0.1, m.g)
@@ -145,6 +192,8 @@ function Match({ lit, gravityOn, quality }: { lit: boolean; gravityOn: boolean; 
   const gNow = gravityOn ? 1 : 0
   return (
     <group>
+      <group ref={outer} position={[0, PIVOT_Y, 0]}>
+      <group ref={body} position={[0, -PIVOT_Y, 0]}>
       {/* stick: unburned wood below the front, char above it */}
       <mesh position={[0, -0.4, 0]}><cylinderGeometry args={[0.055, 0.062, 2.2, 20]} />
         <meshStandardMaterial color="#D8B98A" roughness={0.85} clippingPlanes={[planes.below]} /></mesh>
@@ -154,6 +203,8 @@ function Match({ lit, gravityOn, quality }: { lit: boolean; gravityOn: boolean; 
       <mesh ref={emberMesh}><cylinderGeometry args={[0.058, 0.058, 0.02, 20]} />
         <meshBasicMaterial ref={ember} color="#ff6a1a" transparent opacity={0} /></mesh>
       <mesh ref={headMesh} position={[0, HEAD_Y, 0]}><sphereGeometry args={[0.115, 24, 20]} /><meshStandardMaterial ref={head} color="#9E2B2B" roughness={0.6} /></mesh>
+      </group>
+      </group>
       {/* The marching box follows the flame (and its rising plume). */}
       <VolumeFlame sources={flame} box={[1.1, 2.1, 1.1]}
                    flicker={reducedMotion ? 0 : gNow ? 1 : 0.06} sooty={gNow ? 0.95 : 0.15} dim={gNow ? 1 : 0.9}
@@ -162,13 +213,52 @@ function Match({ lit, gravityOn, quality }: { lit: boolean; gravityOn: boolean; 
   )
 }
 
+const AX = { x: new THREE.Vector3(1, 0, 0), z: new THREE.Vector3(0, 0, 1) }
+const HINT: Record<Tilt, string> = {
+  upright: 'Head up: the flame rises away from the wood, so it creeps down slowly.',
+  sideways: 'Sideways: the rising flame licks the wood beside it, about 2× faster.',
+  down: 'Head down: the flame climbs onto fresh wood, about 4× faster.',
+}
+
 export default function MatchScene({ lit, gravityOn, onContextLost }: { lit: boolean; gravityOn: boolean; onContextLost?: () => void }) {
   const [quality, setQuality] = useState(startQuality)
   const wrap = useRef<HTMLDivElement>(null)
   const inView = useInView(wrap)
+  // Where the match should point; dragging changes it, the scene eases toward it.
+  const turn = useRef(new THREE.Quaternion())
+  const drag = useRef<{ id: number; x: number; y: number } | null>(null)
+  const [tilt, setTilt] = useState<Tilt>('upright')
+  const [turned, setTurned] = useState(false)
+  const q = useMemo(() => new THREE.Quaternion(), [])
+  // Drag sideways: tip the match left/right; drag up/down: tip it toward/away from you.
+  const onMove = (e: React.PointerEvent) => {
+    const d = drag.current
+    if (!d || d.id !== e.pointerId) return
+    const dx = e.clientX - d.x, dy = e.clientY - d.y
+    d.x = e.clientX; d.y = e.clientY
+    turn.current.premultiply(q.setFromAxisAngle(AX.z, -dx * 0.012)).premultiply(q.setFromAxisAngle(AX.x, dy * 0.012)).normalize()
+    if (!turned) setTurned(true)
+  }
+  const upright = () => { turn.current.identity(); setTurned(false) }
   return (
-    <div ref={wrap} className="h-full" role="img"
-         aria-label={`3D match, ${lit ? 'burning' : 'unlit'}, gravity ${gravityOn ? 'on: a tall, flickering yellow flame' : 'off: a small, round, blue flame'}. Illustration.`}>
+    <div ref={wrap} className="h-full cursor-grab active:cursor-grabbing touch-none" role="img"
+         aria-label={`3D match, ${lit ? 'burning' : 'unlit'}, held ${tilt === 'upright' ? 'head up' : tilt === 'down' ? 'head down' : 'sideways'}, gravity ${gravityOn ? 'on: the flame rises straight up' : 'off: a small, round, blue flame'}. Drag to turn it. Illustration.`}
+         onPointerDown={(e) => { drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY }; (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId) }}
+         onPointerMove={onMove}
+         onPointerUp={() => { drag.current = null }} onPointerCancel={() => { drag.current = null }}
+         onDoubleClick={upright}>
+      {/* What turning the match does, in one line. */}
+      <div className="absolute top-3 left-3 right-3 z-10 flex flex-wrap items-start gap-2 pointer-events-none">
+        <p className="rounded bg-black/55 px-2.5 py-1.5 text-[12.5px] text-slate-100 max-w-md">
+          {!turned ? 'Drag to turn the match.' : gravityOn ? HINT[tilt] : 'No "up" in orbit: the flame stays round whichever way the match points.'}
+        </p>
+        {turned && (
+          <button onClick={upright} onPointerDown={(e) => e.stopPropagation()}
+                  className="pointer-events-auto rounded bg-black/55 px-2.5 py-1.5 text-[12.5px] text-slate-100 hover:bg-black/70">
+            Stand it upright
+          </button>
+        )}
+      </div>
       {/* Off-screen or hidden tab: stop rendering entirely (saves phones). */}
       <Canvas frameloop={inView ? 'always' : 'never'} camera={{ position: [0, 0.4, 4.6], fov: 40 }}
               dpr={lowPower ? 0.75 : quality < 1 ? 1 : [1, 1.5]} gl={{ antialias: !lowPower, powerPreference: 'high-performance' }}
@@ -182,8 +272,9 @@ export default function MatchScene({ lit, gravityOn, onContextLost }: { lit: boo
         <color attach="background" args={['#0B0F17']} />
         <ambientLight intensity={0.25} />
         <directionalLight position={[3, 5, 4]} intensity={0.6} />
-        <Match lit={lit} gravityOn={gravityOn} quality={quality} />
-        <OrbitControls enablePan={false} minDistance={2.6} maxDistance={8} target={[0, 0.1, 0]} autoRotate={!lit && !reducedMotion} autoRotateSpeed={0.5} />
+        <Match lit={lit} gravityOn={gravityOn} quality={quality} turn={turn} onTilt={setTilt} />
+        {/* Dragging turns the match itself, so the camera only zooms. */}
+        <OrbitControls enablePan={false} enableRotate={false} minDistance={2.6} maxDistance={8} target={[0, 0.1, 0]} />
       </Canvas>
     </div>
   )

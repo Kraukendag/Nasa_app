@@ -94,7 +94,7 @@ export default function Home({ data, full }: { data: Dataset; full: Dataset }) {
             <b>Fig. 1.</b> {gravityOn
               ? 'With gravity, buoyancy stretches the flame into a rising teardrop that glows yellow with soot.'
               : 'Without gravity nothing rises and oxygen arrives only by diffusion: the flame is smaller, dimmer and rounder, wrapped around the burning wood.'}
-            {' '}Drag to rotate. Illustration; there is no slider for Moon or Mars gravity because NASA's PSI holds no partial-gravity combustion data.
+            {' '}Drag to turn the match: with gravity the flame always rises straight up, and a match held head down burns faster. Illustration; there is no slider for Moon or Mars gravity because NASA's PSI holds no partial-gravity combustion data.
           </figcaption>
         </figure>
       </section>
