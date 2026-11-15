@@ -22,7 +22,7 @@ export interface Dataset {
 export async function loadDataset(): Promise<Dataset> {
   const base = import.meta.env.BASE_URL
   const get = async <T>(name: string): Promise<T> => {
-    const response = await fetch(`${base}data/${name}`)
+    const response = await fetch(`${base}data/${name}?v=${__BUILD_ID__}`)
     if (!response.ok) throw new Error(`Could not load ${name}`)
     return response.json() as Promise<T>
   }

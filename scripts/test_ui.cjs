@@ -105,6 +105,33 @@ const PAGES = ['home', 'habitat', 'lab', 'data', 'findings', 'ranking', 'questio
     else console.log(`  search keyword fallback with the model blocked: ok (${n} results)`)
     await page.close()
   }
+  // A page that crashes must not blank the site: the menu stays and works.
+  // (Regression: an old cached tests.json once turned the Pipeline page white.)
+  {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+    await page.route(/data\/tests\.json/, async (route) => {
+      const res = await route.fetch(); const rows = await res.json()
+      for (const r of rows) { delete r.psi_raw_fields; r.raw = {}; if (r.psi_id === 'PSI-25') r.normalized.flow_sequence_cm_s = null }
+      await route.fulfill({ response: res, body: JSON.stringify(rows) })
+    })
+    await page.goto(`${BASE}/#/pipeline`); await page.waitForTimeout(2000)
+    const alert = await page.locator('[role=alert]').count()
+    const links = await page.locator('header nav a:visible').count()
+    await page.locator('header nav a[href="#/findings"]').click().catch(() => {}); await page.waitForTimeout(1000)
+    const h1 = await page.locator('h1').first().innerText().catch(() => '')
+    if (!alert || links < 5 || h1 !== 'Findings') fails.push(`page crash blanked the site (message ${alert}, menu links ${links}, next page "${h1}")`)
+    else console.log('  a crashing page keeps the menu working: ok')
+    await page.close()
+  }
+  // Data requests carry the build id, so no cache can mix old data with new code.
+  {
+    const page = await browser.newPage(); const urls = []
+    page.on('request', (r) => { if (/\/data\/[a-z_]+\.json/.test(r.url())) urls.push(r.url()) })
+    await page.goto(`${BASE}/#/pipeline`); await page.waitForTimeout(1500)
+    if (!urls.length || urls.some((u) => !/\?v=/.test(u))) fails.push(`data requested without a build id: ${urls.filter((u) => !/\?v=/.test(u)).join(', ')}`)
+    else console.log('  data requests carry the build id: ok')
+    await page.close()
+  }
   await browser.close()
   if (fails.length) { console.log('\nFAILED:\n  ' + fails.join('\n  ')); process.exit(1) }
   console.log('\nAll website checks passed.')

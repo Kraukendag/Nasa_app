@@ -35,7 +35,7 @@ let indexP: Promise<{ docs: SearchDoc[]; vecs: Int8Array; dim: number }> | null 
 let embedP: Promise<any> | null = null
 
 function loadIndex() {
-  indexP ??= fetch(`${import.meta.env.BASE_URL}data/search_index.json`)
+  indexP ??= fetch(`${import.meta.env.BASE_URL}data/search_index.json?v=${__BUILD_ID__}`)
     .then((r) => { if (!r.ok) throw new Error('search index missing'); return r.json() as Promise<Index> })
     .then((ix) => {
       const bin = atob(ix.vectors_int8_base64)

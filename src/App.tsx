@@ -9,7 +9,8 @@
 //  a tab. On small screens the page list folds into a menu button.
 // =============================================================================
 
-import { useEffect, useState } from 'react'
+import { Component, useEffect, useState } from 'react'
+import type { ErrorInfo, ReactNode } from 'react'
 import type { Dataset } from './data'
 import { loadDataset } from './data'
 import type { PageId } from './types'
@@ -138,7 +139,9 @@ function Shell() {
         {error && <div className="max-w-3xl mx-auto p-8"><p className="h3">The data failed to load.</p><p className="text-ink2 mt-2">{error}. Run <code>python3 scripts/build_data.py</code> and reload.</p></div>}
         {!data && !error && <div className="h-full grid place-items-center caption">Loading NASA PSI records…</div>}
         {data && (
-          <Pages data={data} page={page} arg={arg} />
+          <PageErrorBoundary key={`${page}|${arg ?? ''}`} page={page}>
+            <Pages data={data} page={page} arg={arg} />
+          </PageErrorBoundary>
         )}
       </main>
 
@@ -151,4 +154,28 @@ function Shell() {
       </footer>
     </div>
   )
+}
+
+/** If a page crashes, show a message in its place. The top bar and menu stay,
+ *  so you can always go elsewhere (without this, React blanks the whole site).
+ *  Keyed by page: moving to another page starts it fresh. */
+class PageErrorBoundary extends Component<{ page: string; children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null }
+  static getDerivedStateFromError(error: Error) { return { error } }
+  componentDidCatch(error: Error, info: ErrorInfo) { console.warn('Page crashed:', error, info.componentStack) }
+  render() {
+    if (!this.state.error) return this.props.children
+    return (
+      <div className="max-w-3xl mx-auto p-8" role="alert">
+        <p className="h3">This page could not be shown.</p>
+        <p className="text-ink2 mt-2">Something went wrong while drawing it ({this.state.error.message}). The rest of the site
+          still works. Often an old copy of the site's data is the cause; reloading fetches a fresh one.</p>
+        <div className="flex flex-wrap gap-2 mt-4">
+          <button className="btn btn-primary" onClick={() => window.location.reload()}>Reload</button>
+          <button className="btn" onClick={() => this.setState({ error: null })}>Try again</button>
+          <a className="btn no-underline" href="#/">Go to the home page</a>
+        </div>
+      </div>
+    )
+  }
 }
