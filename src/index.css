@@ -69,7 +69,15 @@ a:hover { @apply underline; }
 .flag-ok::before { background: #1f7a4d; }
 
 /* Figures */
-.figure { @apply card overflow-hidden; }
+.figure { @apply card overflow-hidden; position: relative; }
+/* AI disclosure: every animation and designed figure carries a faint
+   "Made with Claude" mark, top right. NASA's own photos opt out with
+   .no-mark, so the mark never sits on NASA's work. */
+.figure:not(.no-mark)::after {
+  content: "Made with Claude"; position: absolute; top: 6px; right: 10px; z-index: 20;
+  font: 500 10.5px/1 "IBM Plex Sans", system-ui, sans-serif; letter-spacing: .03em;
+  color: rgb(100 107 120 / .6); pointer-events: none;
+}
 .figcap { @apply caption px-4 py-3 border-t border-rule; }
 .figcap b { @apply text-ink font-semibold; }
 

@@ -814,7 +814,7 @@ function RealImagery({ psi, shape, material }: { psi: string[]; shape: string; m
   const photos = items.filter((m) => m.kind === 'image')
   const videos = items.filter((m) => m.kind === 'video')
   return (
-    <figure className="figure">
+    <figure className="figure no-mark">{/* NASA's own photos and videos: no "Made with Claude" mark */}
       {items.length ? (
         <div className="p-3 sm:p-4 space-y-3">
           {photos.length > 0 && (
@@ -962,7 +962,7 @@ function TelemetryHud({ data, t, cls, label, is1g }: { data: Dataset; t: TestRec
     [is1g ? 'Outcome (1 g)' : 'Outcome', cls && label ? label : nr, cls ? tier(is1g ? 'outcome_1g_class' : 'outcome_class') : '—'],
   ]
   return (
-    <div className="absolute top-3 right-3 max-w-[calc(100%-1.5rem)] sm:max-w-[300px] rounded bg-black/65 text-slate-100 text-[12px] leading-snug">
+    <div className="absolute top-7 right-3 max-w-[calc(100%-1.5rem)] sm:max-w-[300px] rounded bg-black/65 text-slate-100 text-[12px] leading-snug">
       <button onClick={() => setOpen((v) => !v)} className="w-full text-left px-3 py-1.5 font-medium flex items-center gap-2" aria-expanded={open}>
         <span>Empirical PSI Telemetry Overlay</span><span className="ml-auto text-slate-400" aria-hidden>{open ? '−' : '+'}</span>
       </button>

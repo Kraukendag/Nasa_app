@@ -135,6 +135,7 @@ export default function HowItWorks({ data }: { data: Dataset }) {
             .hiw-link:hover text tspan:first-child { text-decoration: underline }
           `}</style>
 
+          <text x={990} y={14} textAnchor="end" fontSize={11} fontWeight={500} letterSpacing={0.4} fill={C.mute} fillOpacity={0.6}>Made with Claude</text>
           <Rule y={r2 - 38} />
           <Rule y={r3 - 54} />
 

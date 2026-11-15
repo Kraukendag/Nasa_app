@@ -219,7 +219,7 @@ function Flamelets({ data }: { data: Dataset }) {
       burn their own channel toward the incoming air, and survive where a full flame could not.
     </>}>
       <div className="grid lg:grid-cols-[minmax(0,320px)_1fr] gap-6 items-start">
-        <Fig n={3} caption={fig.caption} source={<><LitCite data={data} keyName={fig.source} />, {fig.where}. {fig.setting}</>}>
+        <Fig n={3} className="no-mark" caption={fig.caption} source={<><LitCite data={data} keyName={fig.source} />, {fig.where}. {fig.setting}</>}>
           <img src={`${import.meta.env.BASE_URL}media/${fig.file}`} alt="Flamelets re-forming a flame front when airflow increases (top) and the char fingers they leave on paper (bottom)"
                className="w-full bg-viewport" loading="lazy" />
         </Fig>

@@ -248,7 +248,7 @@ export default function MatchScene({ lit, gravityOn, onContextLost }: { lit: boo
          onPointerUp={() => { drag.current = null }} onPointerCancel={() => { drag.current = null }}
          onDoubleClick={upright}>
       {/* What turning the match does, in one line. */}
-      <div className="absolute top-3 left-3 right-3 z-10 flex flex-wrap items-start gap-2 pointer-events-none">
+      <div className="absolute top-3 left-3 right-28 z-10 flex flex-wrap items-start gap-2 pointer-events-none">
         <p className="rounded bg-black/55 px-2.5 py-1.5 text-[12.5px] text-slate-100 max-w-md">
           {!turned ? 'Drag to turn the match.' : gravityOn ? HINT[tilt] : 'No "up" in orbit: the flame stays round whichever way the match points.'}
         </p>
