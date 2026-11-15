@@ -17,6 +17,7 @@
 
 import type { Dataset } from '../data'
 import { Fig, LitCite, Page, PsiCite, Section } from '../ui'
+import { Supplemental } from '../context/DataModeContext'
 
 const NEG_TITLES: Record<string, string> = {
   failed_ignition: 'Attempts that never lit',
@@ -72,6 +73,7 @@ export default function Findings({ data }: { data: Dataset }) {
         Server documents go further. Their numbers were read from the documents themselves and are kept apart from the
         PSI rows; they are never mixed into PSI counts.
       </>}>
+        <Supplemental title="results from NASA reports outside PSI">
         <div className="space-y-6">
           <Fig n={1} caption={<>Flame spread at simulated lunar gravity (0.16 g) against 1 g, from LUCI, flown on Blue Origin
             New Shepard on 4 February 2025.</>} source={<LitCite data={data} keyName="LUCI" />}>
@@ -118,9 +120,10 @@ export default function Findings({ data }: { data: Dataset }) {
           </div>
           <p className="caption">{lit.note}</p>
         </div>
+        </Supplemental>
       </Section>
 
-      <Flamelets data={data} />
+      <Supplemental title="flamelets: BASS-II report notes and a NASA Glenn ground experiment"><Flamelets data={data} /></Supplemental>
 
       <Section title="What failed, and what is missing" intro={<>
         Negative results are results. These are attempts that never lit, outcomes nobody expected, and instruments or

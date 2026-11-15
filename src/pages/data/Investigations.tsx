@@ -54,6 +54,7 @@ export default function Investigations({ data, onShowRows }: { data: Dataset; on
 
 function Card({ i, chosen, onToggle, onShowRows }: { i: Investigation; chosen: boolean; onToggle: () => void; onShowRows: () => void }) {
   const [more, setMore] = useState(false)
+  const [cols, setCols] = useState(false)
   return (
     <article className={`card p-5 flex flex-col gap-4 ${chosen ? '!border-accent' : ''}`}>
       <header className="flex items-start justify-between gap-2">
@@ -87,6 +88,23 @@ function Card({ i, chosen, onToggle, onShowRows }: { i: Investigation; chosen: b
         {more && (i.objectives
           ? <p className="mt-1 small text-ink2 enter">{i.objectives} <span className="text-mute">(PSI record text)</span></p>
           : <p className="mt-1 caption italic enter">The objectives text has not yet been collected from this investigation's PSI record.</p>)}
+      </div>
+      <div>
+        {/* Every column of NASA's table, with how many rows fill it in. Blank cells stay blank. */}
+        <button onClick={() => setCols((v) => !v)} className="small text-accent hover:underline">
+          {cols ? 'Hide columns' : `All ${i.column_coverage.length} table columns (recorded vs blank)`}
+        </button>
+        {cols && (
+          <table className="tbl mt-1 enter">
+            <thead><tr><th>Column in the PSI table</th><th className="text-right">Recorded</th><th className="text-right">Blank</th></tr></thead>
+            <tbody>
+              {i.column_coverage.map((c) => (
+                <tr key={c.column}><td className="small">{c.column}</td><td className="text-right num">{c.recorded}</td>
+                  <td className={`text-right num ${c.blank ? 'text-accent' : 'text-mute'}`}>{c.blank}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
       <footer className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 pt-3 border-t border-rule small">
         {i.doi_url ? <a href={i.doi_url} target="_blank" rel="noreferrer">DOI {i.doi}</a> : <span className="caption">DOI not yet recorded</span>}

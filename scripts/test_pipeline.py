@@ -70,11 +70,11 @@ def _():
 @check("raw cells are kept exactly; a blank cell is never turned into 0")
 def _():
     for t in tests:
-        for k, v in t["raw"].items():
+        for k, v in t["psi_raw_fields"].items():
             assert v is None or v.strip() != "", f"{t['id']} {k}: empty string instead of null"
     for t in tests:
         if t["psi_id"] == "PSI-25" and not t["is_note"]:
-            raw = (t["raw"].get("Calibrated  initial O2 % by vol") or "").strip()
+            raw = (t["psi_raw_fields"].get("Calibrated  initial O2 % by vol") or "").strip()
             o2 = t["normalized"]["o2_percent"]
             if o2 is not None:
                 assert re.sub(r"[^0-9.]", "", raw) and abs(float(re.sub(r"[^0-9.]", "", raw)) - o2) < 1e-9, \

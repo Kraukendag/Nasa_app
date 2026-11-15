@@ -13,6 +13,7 @@ import { useEffect, useState } from 'react'
 import type { Dataset } from './data'
 import { loadDataset } from './data'
 import type { PageId } from './types'
+import { DataModePill, DataModeProvider, useView } from './context/DataModeContext'
 import Home from './pages/Home'
 import Lab from './pages/Lab'
 import Habitat from './pages/Habitat'
@@ -59,6 +60,30 @@ export function go(page: PageId, arg?: string) {
 }
 
 export default function App() {
+  return <DataModeProvider><Shell /></DataModeProvider>
+}
+
+/** Pages get the dataset as the current Data Mode shows it; the Lunar habitat
+ *  page always gets the full set (it needs NASA work beyond PSI). */
+function Pages({ data, page, arg }: { data: Dataset; page: PageId; arg: string | null }) {
+  const view = useView(data)
+  return (
+    <div key={page} className={page === 'lab' ? 'h-full' : ''}>
+      {page === 'home' && <Home data={view} full={data} />}
+      {page === 'habitat' && <Habitat data={data} />}
+      {page === 'search' && <Search data={view} />}
+      {page === 'lab' && <Lab data={view} arg={arg} />}
+      {page === 'data' && <Data data={view} arg={arg} />}
+      {page === 'findings' && <Findings data={view} />}
+      {page === 'ranking' && <Ranking data={view} />}
+      {page === 'questions' && <Questions data={view} />}
+      {page === 'pipeline' && <Pipeline data={view} />}
+      {page === 'about' && <About data={view} />}
+    </div>
+  )
+}
+
+function Shell() {
   const [route, setRoute] = useState(readHash)
   const [data, setData] = useState<Dataset | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -80,6 +105,7 @@ export default function App() {
             <img src={`${import.meta.env.BASE_URL}brand/microflamma-mark-light.png`} alt="" className="h-10 w-10 object-contain" />
             <span className="font-serif font-semibold text-lg text-ink tracking-tight">Micro Flamma</span>
           </a>
+          <span className="hidden xl:inline-flex ml-4"><DataModePill /></span>
           <nav className="hidden xl:flex items-center gap-0.5 ml-auto" aria-label="Pages">
             {NAV.map((n) => (
               <a key={n.id} href={`#/${n.id}`} aria-current={page === n.id ? 'page' : undefined}
@@ -89,12 +115,14 @@ export default function App() {
               </a>
             ))}
           </nav>
-          <button className="btn xl:hidden ml-auto" onClick={() => setMenu((v) => !v)} aria-expanded={menu} aria-label="Menu">
+          <span className="hidden sm:inline-flex xl:hidden ml-auto"><DataModePill /></span>
+          <button className="btn xl:hidden ml-auto sm:ml-0" onClick={() => setMenu((v) => !v)} aria-expanded={menu} aria-label="Menu">
             {menu ? 'Close' : 'Menu'}
           </button>
         </div>
         {menu && (
           <nav className="xl:hidden border-t border-rule bg-card enter" aria-label="Pages">
+            <div className="px-5 py-3 border-b border-rule/70 sm:hidden"><DataModePill /></div>
             {NAV.map((n) => (
               <a key={n.id} href={`#/${n.id}`} className={`block px-5 py-3 no-underline border-b border-rule/70 ${page === n.id ? 'text-ink font-medium bg-wash' : 'text-ink2'}`}>
                 {n.label}
@@ -108,18 +136,7 @@ export default function App() {
         {error && <div className="max-w-3xl mx-auto p-8"><p className="h3">The data failed to load.</p><p className="text-ink2 mt-2">{error}. Run <code>python3 scripts/build_data.py</code> and reload.</p></div>}
         {!data && !error && <div className="h-full grid place-items-center caption">Loading NASA PSI records…</div>}
         {data && (
-          <div key={page} className={page === 'lab' ? 'h-full' : ''}>
-            {page === 'home' && <Home data={data} />}
-            {page === 'habitat' && <Habitat data={data} />}
-            {page === 'search' && <Search data={data} />}
-            {page === 'lab' && <Lab data={data} arg={arg} />}
-            {page === 'data' && <Data data={data} arg={arg} />}
-            {page === 'findings' && <Findings data={data} />}
-            {page === 'ranking' && <Ranking data={data} />}
-            {page === 'questions' && <Questions data={data} />}
-            {page === 'pipeline' && <Pipeline data={data} />}
-            {page === 'about' && <About data={data} />}
-          </div>
+          <Pages data={data} page={page} arg={arg} />
         )}
       </main>
 

@@ -32,6 +32,7 @@ import type { NumericSummary } from '../outcomes'
 import type { TestRecord } from '../types'
 import { LitCite } from '../ui'
 import { mediaFor, mediaUrl } from '../media'
+import { Supplemental } from '../context/DataModeContext'
 
 // Three.js is only downloaded when the Lab is opened.
 const Specimen = lazy(() => import('../components/Specimen'))
@@ -105,7 +106,7 @@ const rangeText = (v: (number | null | undefined)[], d: number) => {
 const round = (v: number | null, d: number) => (v == null ? null : Math.round(v * 10 ** d) / 10 ** d)
 
 /** The Lab's choices as they appear in a shareable link (#/lab/<json>). */
-interface LabLink { s?: State; i?: string; m?: string; c?: Selection; g?: Gravity }
+interface LabLink { s?: State; i?: string; m?: string; c?: Selection; g?: Gravity; t?: string }
 function readLink(arg: string | null): LabLink {
   if (!arg) return {}
   try { return JSON.parse(arg) as LabLink } catch { return {} }
@@ -120,6 +121,8 @@ export default function Lab({ data, arg = null }: { data: Dataset; arg?: string 
   const [gravity, setGravity] = useState<Gravity>(link.g ?? '0g')
   const [lit, setLit] = useState(false)
   const [moonCheck, setMoonCheck] = useState(false)
+  // The one PSI test row the 3D view draws (null: the default row).
+  const [drawnId, setDrawnId] = useState<string | null>(link.t ?? null)
 
   // ---- The pool of real tests for this fuel state ------------------------
   const pool = useMemo(() => data.tests.filter((t) => !t.is_note && !t.is_flow_vis
@@ -147,14 +150,14 @@ export default function Lab({ data, arg = null }: { data: Dataset; arg?: string 
     const k = `${state}|${inv}|${chosen}`
     if (k === burnKey.current) return
     burnKey.current = k
-    setSel({}); setMoonCheck(false); setGravity('0g'); setLit(false)
+    setSel({}); setMoonCheck(false); setGravity('0g'); setLit(false); setDrawnId(null)
   }, [state, inv, chosen])
   // Keep the address bar in step with the choices, so the link can be shared.
   // replaceState: no new history entry per click, and no page reload.
   useEffect(() => {
-    const l: LabLink = { s: state, i: inv !== 'all' ? inv : undefined, m: chosen, c: Object.keys(sel).length ? sel : undefined, g: gravity !== '0g' ? gravity : undefined }
+    const l: LabLink = { s: state, i: inv !== 'all' ? inv : undefined, m: chosen, c: Object.keys(sel).length ? sel : undefined, g: gravity !== '0g' ? gravity : undefined, t: drawnId ?? undefined }
     window.history.replaceState(null, '', `#/lab/${encodeURIComponent(JSON.stringify(l))}`)
-  }, [state, inv, chosen, sel, gravity])
+  }, [state, inv, chosen, sel, gravity, drawnId])
 
   const dims = DIMENSIONS.filter((d) => d.states.includes(state))
   const result = useMemo(() => applySelection(rows, sel), [rows, sel])
@@ -188,52 +191,55 @@ export default function Lab({ data, arg = null }: { data: Dataset; arg?: string 
   const flowShown = round(sel.flow != null ? Number(sel.flow) : median(result.map((t) => t.normalized.flow_cm_s)), 2)
   const direction = (sel.direction ?? mostCommon(result.map((t) => t.normalized.flow_direction))) as
     'concurrent' | 'opposed' | 'stagnation' | null
-  const o2Shown = round(sel.o2 != null ? Number(sel.o2) : median(result.map((t) => t.normalized.o2_percent)), 1)
   // What the caption states: the chosen value, or the recorded range.
   const o2Text = sel.o2 != null ? `${Number(sel.o2)}` : rangeText(result.map((t) => t.normalized.o2_percent), 1)
   const flowText = sel.flow != null ? `${Number(sel.flow)}` : rangeText(result.flatMap((t) =>
     t.normalized.flow_sequence_cm_s.length ? t.normalized.flow_sequence_cm_s : [t.normalized.flow_cm_s]), 2)
   const d0 = median(result.map((t) => t.normalized.droplet_d0_mm))
-  const dExt = median(result.map((t) => t.normalized.extinction_d_mm))
-  const burnT = median(result.filter((t) => t.normalized.hot_ignition !== false).map((t) => t.normalized.burn_time_s))
   const fiberAll = result.length > 0 && result.every((t) => t.normalized.fiber_supported === true)
   const nozzle = median(result.map((t) => t.normalized.nozzle_mm as number | null))
   const burnerMm = median(result.map((t) => t.normalized.burner_size_mm as number | null))
   const psiShown = [...new Set(result.map((t) => t.psi_id))]
-  // What the drawing does NOT show: the other shapes and flow directions in
-  // the matching set (the reviewer found the caption implied one shape only).
-  const mix = (vals: (string | null | undefined)[], shown: string | null) => {
-    const c = new Map<string, number>()
-    vals.forEach((v) => v && c.set(v, (c.get(v) ?? 0) + 1))
-    const total = [...c.values()].reduce((a, b) => a + b, 0)
-    return {
-      top: shown ? `${shown} (${c.get(shown) ?? 0} of ${total})` : '',
-      others: [...c.entries()].filter(([k]) => k !== shown).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} (${n})`),
-    }
-  }
-  const shapeMix = state === 'solid' ? mix(result.map((t) => t.normalized.geometry), geometry) : { top: '', others: [] as string[] }
-  const dirMix = state === 'solid' ? mix(result.map((t) => t.normalized.flow_direction), direction) : { top: '', others: [] as string[] }
   const burner: BurnerKind = BURNER[psiShown[0] ?? ''] ?? 'jet'
 
-  // The ending the 3D view plays: the most common recorded outcome.
   const top = outcomes.outcomes[0]
-  const ending: Ending = top ? (ENDING[top.cls] ?? 'full')
-    : outcomes.ignition && outcomes.ignition.ignited === 0 ? 'none' : 'full'
-  const endingNote = top
-    ? `Ending shown: the most common recorded outcome, “${top.label}” (${top.count} of ${outcomes.withOutcome}).`
-    : outcomes.ignition ? `${outcomes.ignition.ignited} of ${outcomes.ignition.ignited + outcomes.ignition.failed} ignited; no ending category is recorded.`
-      : 'These tests record no ending, so the flame is drawn burning through. That part is illustration.'
 
-  // ---- FLEX model, evaluated at the matched tests' recorded conditions ----
+  // ---- The ONE PSI test the 3D view draws ------------------------------------
+  // The flame is driven by a single recorded row, never by an average or a
+  // blend of rows. By default: the first matching test with a recorded ending.
+  const is1g = gravity === '1g'
+  const clsOf = (t: TestRecord) => (is1g ? t.normalized.outcome_1g_class : t.normalized.outcome_class) as string | null
+  const labelOf = (t: TestRecord) => (is1g ? t.normalized.outcome_1g : t.normalized.outcome) as string | null
+  const drawn: TestRecord | undefined = result.find((t) => t.id === drawnId) ?? result.find((t) => clsOf(t)) ?? result[0]
+  const dn = drawn?.normalized
+  const drawnCls = drawn ? clsOf(drawn) : null
+  const ending: Ending = drawnCls ? (ENDING[drawnCls] ?? 'full') : dn?.hot_ignition === false ? 'none' : 'full'
+  const endingNote = drawn && drawnCls
+    ? `Ending shown: test ${drawn.test_number}'s recorded outcome, “${labelOf(drawn)}”.`
+    : drawn ? `Test ${drawn.test_number} records no ending, so the flame is drawn burning through. That part is illustration.` : ''
+  // 3D inputs from the drawn row only. A value the row leaves blank stays blank.
+  const dShape: SampleShape = state === 'liquid' ? 'droplet' : state === 'gas' ? 'burner'
+    : (SHAPES.includes(dn?.geometry as SampleShape) ? dn!.geometry as SampleShape : shape)
+  const dDims = { diameter_mm: dn?.diameter_mm ?? null, thickness_mm: dn?.thickness_mm ?? null, width_mm: dn?.width_mm ?? null }
+  const dFlow = state === 'solid' ? round(dn?.flow_cm_s ?? null, 2) : null
+  const dDirection = state === 'solid' ? (dn?.flow_direction ?? null) as 'concurrent' | 'opposed' | 'stagnation' | null : null
+  const dO2 = dn?.o2_percent ?? null
+  const dBurner: BurnerKind = BURNER[drawn?.psi_id ?? ''] ?? 'jet'
+
+  // ---- FLEX model, evaluated at the DRAWN test's own recorded conditions ----
+  // Only a PSI-69 FLEX row has every input; any other row shows the
+  // specification without a number.
+  const flexApplies = state === 'liquid' && ['Methanol', 'Heptane'].includes(chosen ?? '') && result.some((t) => t.psi_id === 'PSI-69')
   const flex = useMemo(() => {
-    if (state !== 'liquid' || !['Methanol', 'Heptane'].includes(chosen ?? '') || !result.length) return null
-    const flexRows = result.filter((t) => t.psi_id === 'PSI-69')
-    if (!flexRows.length) return null
-    const m = (k: keyof TestRecord['normalized']) => median(flexRows.map((t) => t.normalized[k] as number | null))
-    const inputs = { isHeptane: chosen === 'Heptane', o2: m('o2_mole_fraction') ?? 0, co2: m('co2_mole_fraction') ?? 0,
-      he: m('he_mole_fraction') ?? 0, pressureMmHg: m('pressure_mmhg') ?? 0, d0: m('droplet_d0_mm') ?? 0 }
-    return { ...evaluateFlexModel(data.flexModel, inputs), n: flexRows.length }
-  }, [state, chosen, result, data.flexModel])
+    if (!flexApplies || drawn?.psi_id !== 'PSI-69') return null
+    const n = drawn.normalized
+    const missing = (['o2_mole_fraction', 'pressure_mmhg', 'droplet_d0_mm'] as const).filter((k) => typeof n[k] !== 'number')
+    if (missing.length) return { probability: 0, shown: false, reasons: [`test ${drawn.test_number} does not record ${missing.join(', ').replace(/_/g, ' ')}`], nearestDistance: NaN }
+    return evaluateFlexModel(data.flexModel, { isHeptane: chosen === 'Heptane', o2: n.o2_mole_fraction as number,
+      co2: (n.co2_mole_fraction as number | null) ?? 0, he: (n.he_mole_fraction as number | null) ?? 0,
+      pressureMmHg: n.pressure_mmhg as number, d0: n.droplet_d0_mm as number })
+  }, [flexApplies, drawn, chosen, data.flexModel])
+
 
   // ---- Moon-base check: pick the recorded values nearest the habitat ------
   const runMoonCheck = () => {
@@ -275,12 +281,15 @@ export default function Lab({ data, arg = null }: { data: Dataset; arg?: string 
     flameletTests, matchingCount: result.length, coolFlameRecorded: outcomes.coolFlamesRecorded,
     coolFlameTerritory: outcomes.coolFlameTerritory, burner,
   }
-  const regime: Regime = decideRegime({ ...regimeInput, gravity: partialG ? 'none' : gravity === '1g' ? '1g' : '0g', ending })
+  const regime: Regime = decideRegime({ ...regimeInput, shape: dShape, flow: dFlow, direction: dDirection, topClass: drawnCls, burner: dBurner,
+    drawnTest: drawn ? `${drawn.psi_id} ${drawn.test_number}` : null,
+    drawnFlamelet: !!drawn && drawn.psi_id === 'PSI-25' && flameletTests.includes(drawn.test_number ?? ''),
+    gravity: partialG ? 'none' : gravity === '1g' ? '1g' : '0g', ending })
   // The normal-gravity twin for the side-by-side view (SAFFIRE-II recorded both).
   const tl = useRef<Timeline>({ t: 0, playing: false, duration: 1, reignite: null, phase: 'Ready' })
   // 2D schematic when the device has no WebGL, when 3D fails, or on request.
   const [use2D, setUse2D] = useState(() => !isWebGLAvailable().webgl1)
-  const runKey = [shape, regime.behaviour, ending, gravity, flowShown, direction, chosen].join('|')
+  const runKey = [dShape, regime.behaviour, ending, gravity, dFlow, dDirection, chosen, drawn?.id].join('|')
   // New conditions start a new run (instead of jumping mid-burn).
   // New conditions: stop and wait for Ignite (runs only start by hand).
   useEffect(() => { tl.current.t = 0; tl.current.reignite = null; tl.current.playing = false; setLit(false) }, [runKey]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -376,13 +385,13 @@ export default function Lab({ data, arg = null }: { data: Dataset; arg?: string 
               <PartialGravity gravity={gravity} />
             ) : (
               <Suspense fallback={<div className="h-full grid place-items-center text-slate-400 small">Loading 3D view…</div>}>
-{use2D ? <VolumeFlameFallback2D shape={shape} gravity={gravity === '1g' ? '1g' : '0g'} lit={lit && !neverLit} regime={regime} /> : (
-                  <WebGLErrorBoundary fallback={<VolumeFlameFallback2D shape={shape} gravity={gravity === '1g' ? '1g' : '0g'} lit={lit && !neverLit} regime={regime} />} onError={() => setUse2D(true)}>
-                                <Specimen shape={shape} dims={sampleDims} lit={lit && !neverLit} gravity={gravity === '1g' ? '1g' : '0g'}
-                          regime={regime} timeline={tl} runKey={runKey} o2={o2Shown}
-                          flowCmS={state === 'solid' ? flowShown : null} direction={state === 'solid' ? direction : null}
-                          fuel={chosen} droplet={state === 'liquid' ? { d0: d0 ?? 2.5, dExt, burnTime: burnT } : null}
-                          onContextLost={() => setUse2D(true)} fiber={fiberAll} burner={burner} burnerSizeMm={burnerMm} />
+{use2D ? <VolumeFlameFallback2D shape={dShape} gravity={gravity === '1g' ? '1g' : '0g'} lit={lit && !neverLit} regime={regime} /> : (
+                  <WebGLErrorBoundary fallback={<VolumeFlameFallback2D shape={dShape} gravity={gravity === '1g' ? '1g' : '0g'} lit={lit && !neverLit} regime={regime} />} onError={() => setUse2D(true)}>
+                  <Specimen shape={dShape} dims={dDims} lit={lit && !neverLit} gravity={gravity === '1g' ? '1g' : '0g'}
+                          regime={regime} timeline={tl} runKey={runKey} o2={dO2}
+                          flowCmS={dFlow} direction={dDirection}
+                          fuel={chosen} droplet={state === 'liquid' ? { d0: dn?.droplet_d0_mm ?? 2.5, dExt: dn?.extinction_d_mm ?? null, burnTime: dn?.burn_time_s ?? null } : null}
+                          onContextLost={() => setUse2D(true)} fiber={dn?.fiber_supported === true} burner={dBurner} burnerSizeMm={(dn?.burner_size_mm as number | null) ?? null} />
                   </WebGLErrorBoundary>
                 )}
               </Suspense>
@@ -392,30 +401,40 @@ export default function Lab({ data, arg = null }: { data: Dataset; arg?: string 
                            timeline={tl} regime={regime}
                            onIgnite={() => { setLit(true); tl.current.t = 0; tl.current.reignite = null; tl.current.playing = true }}
                            onReset={() => setLit(false)} use2D={use2D} toggle2D={() => setUse2D((v) => !v)}
-                           endNote={top ? `It stopped here on purpose: the most common ending among the matching NASA tests is “${top.label}” (${top.count} of ${outcomes.withOutcome}${top.count * 2 > outcomes.withOutcome ? ', a majority' : ''}), so the flame does not burn the whole sample.` : 'It stopped here: the matching tests record no ending, so this part is illustration.'} />
+                           endNote={drawn && drawnCls ? `It stopped here on purpose: NASA recorded “${labelOf(drawn)}” for test ${drawn.test_number}, so the flame does not burn the whole sample.` : 'It stopped here: the drawn test records no ending, so this part is illustration.'} />
             )}
             {!partialG && lit && neverLit && (
               <div className="absolute top-3 left-3 max-w-xs rounded bg-black/60 px-3 py-2 small text-slate-100 enter">
-                None of the matching tests established a flame, so none is drawn.
+                The drawn test did not establish a flame, so none is drawn.
               </div>
             )}
+            {!partialG && drawn && <TelemetryHud data={data} t={drawn} cls={drawnCls} label={labelOf(drawn)} is1g={is1g} />}
           </div>
+          {!partialG && drawn && (
+            <div className="px-4 py-3 border-b border-rule flex flex-wrap items-center gap-x-4 gap-y-2">
+              <label className="small flex items-center gap-2 min-w-0">
+                <span className="text-ink2 shrink-0">Drawn test</span>
+                <select value={drawn.id} onChange={(e) => setDrawnId(e.target.value)} className="field max-w-full sm:max-w-[420px] truncate">
+                  {result.map((t) => <option key={t.id} value={t.id}>{drawnOption(t, clsOf(t) ? labelOf(t) : null)}</option>)}
+                </select>
+              </label>
+              <span className="flag" title="The 3D flame is a picture, not a simulation">Visual Regime Reconstruction: Ray-marched GLSL representation driven by discrete NASA PSI test parameters (non-interpolated, non-CFD).</span>
+            </div>
+          )}
           <figcaption className="figcap">
             {partialG ? (
               <><b>Fig. 1.</b> No flame is drawn: none of the PSI tests ran at {gravity === 'moon' ? '0.16 g' : '0.38 g'}. Measured
                 lunar-gravity results from NASA work outside PSI are listed on the right.{' '}</>
             ) : (
               <>
-                <b>Fig. 1.</b> Drawn: {describeSample(shape, chosen, sampleDims, d0, state, lengthCm, widthCm)}
-                {state === 'solid' && direction && <>, {direction} airflow</>}
-                {shapeMix.others.length > 0 || dirMix.others.length > 0 ? (
-                  <> (the most common {shapeMix.others.length > 0 ? `shape, ${shapeMix.top}` : ''}{shapeMix.others.length > 0 && dirMix.others.length > 0 ? ', and ' : ''}{dirMix.others.length > 0 ? `direction, ${dirMix.top}` : ''}
-                    {' '}among the matching tests; they also include {[...shapeMix.others, ...dirMix.others].join(', ')})</>
-                ) : null}.{' '}
-                Recorded conditions: {state === 'solid' && flowText ? `${flowText} cm/s airflow, ` : ''}{o2Text ? `${o2Text}% O₂` : 'oxygen not recorded'}
-                {(!sel.o2 && o2Text?.includes('–')) ? ' (range)' : ''}. {ENDING_WORDS[state][ending]}. {endingNote}{' '}
+                <b>Fig. 1.</b> Drawn: test {drawn?.test_number} ({drawn?.psi_id}), {describeSample(dShape, chosen, dDims, dn?.droplet_d0_mm ?? null, state,
+                  (dn?.sample_length_cm as number | null) ?? null, (dn?.sample_width_cm as number | null) ?? null)}
+                {dDirection && <>, {dDirection} airflow</>}. Its recorded conditions: {state === 'solid' ? (dFlow != null ? `${dFlow} cm/s airflow, ` : 'airflow not recorded, ') : ''}
+                {dO2 != null ? `${dO2}% O₂` : 'oxygen not recorded'}. {drawnCls === 'Disruption' ? 'The droplet burns, then breaks apart' : ENDING_WORDS[state][ending]}. {endingNote}{' '}
+                The other {Math.max(0, result.length - 1)} matching test{result.length - 1 === 1 ? '' : 's'} ({o2Text ? `${o2Text}% O₂` : 'oxygen not recorded'}
+                {state === 'solid' && flowText ? `, ${flowText} cm/s` : ''}) can be drawn one at a time from the list above.{' '}
                 {outcomes.spreadRate
-                  ? <>Recorded spread rate {outcomes.spreadRate.median.toFixed(1)} mm/s; the animation is a time-lapse.</>
+                  ? <>Recorded spread rate {outcomes.spreadRate.median.toFixed(1)} mm/s (median of the matching tests); the animation is a time-lapse.</>
                   : <>Spread pace is compressed and illustrative.</>}{' '}
                 Flame colour and size are illustration; shape, orientation and ending follow the data.{' '}
               </>
@@ -427,13 +446,13 @@ export default function Lab({ data, arg = null }: { data: Dataset; arg?: string 
         {!partialG && (
           <section className="card p-5">
             <h3 className="small font-semibold">Why this flame looks like this: {regime.label}</h3>
-            <ul className="mt-2 space-y-2">
-              {regime.evidence.map((e) => (
-                <li key={e.text} className="small text-ink2 grid sm:grid-cols-[1fr_240px] gap-x-4">
-                  <span>{e.text}</span><span className="caption sm:text-right">{e.cite}</span>
-                </li>
-              ))}
-            </ul>
+            {/* Evidence from the PSI tables first; NASA reports outside PSI go in the box below. */}
+            <EvidenceList items={regime.evidence.filter((e) => isPsiCite(e.cite))} />
+            {regime.evidence.some((e) => !isPsiCite(e.cite)) && (
+              <div className="mt-3"><Supplemental title="what NASA reports say about this behaviour">
+                <EvidenceList items={regime.evidence.filter((e) => !isPsiCite(e.cite))} />
+              </Supplemental></div>
+            )}
           </section>
         )}
 
@@ -479,7 +498,7 @@ export default function Lab({ data, arg = null }: { data: Dataset; arg?: string 
           </p>
         </div>
 
-        {partialG ? <PartialGravityResults data={data} material={chosen} /> : (
+        {partialG ? <Supplemental title="measured at partial gravity in NASA work outside PSI"><PartialGravityResults data={data} material={chosen} /></Supplemental> : (
           <>
             {outcomes.ignition && (
               <Block title="Did it ignite?">
@@ -501,7 +520,7 @@ export default function Lab({ data, arg = null }: { data: Dataset; arg?: string 
                     </li>
                   ))}
                 </ul>
-                {outcomes.sources.includes('PSI-25') && (
+                {result.some((t) => t.psi_id === 'PSI-25' && (t.normalized.outcome_source ?? '').startsWith('NASA/TM')) && (
                   <p className="caption mt-3">Categories are this project's reading of NASA's test-matrix notes (BASS-II Summary
                     Report, Appendix A). NASA's own words are quoted below.</p>
                 )}
@@ -555,9 +574,11 @@ export default function Lab({ data, arg = null }: { data: Dataset; arg?: string 
           </Block>
         )}
 
-        {flex && !partialG && (
+        {flexApplies && !partialG && (
           <Block title="Fitted FLEX model">
-            {flex.shown ? (
+            {!flex ? (
+              <p className="small text-ink2">Draw a PSI-69 FLEX test to evaluate the model at that test's recorded conditions.</p>
+            ) : flex.shown ? (
               <p><span className="num text-2xl">{(flex.probability * 100).toFixed(0)}%</span> <span className="small text-ink2">fitted chance of extinction (vs. burning to completion) at these conditions</span></p>
             ) : (
               <p className="small text-ink2"><b className="text-ink">Not shown:</b> {flex.reasons.join('; ')}.</p>
@@ -568,19 +589,20 @@ export default function Lab({ data, arg = null }: { data: Dataset; arg?: string 
               <dt>balanced accuracy</dt><dd>{(data.flexModel.metrics.balanced_accuracy * 100).toFixed(0)}%</dd>
               <dt>AUC</dt><dd>{data.flexModel.metrics.auc.toFixed(2)}</dd>
             </dl>
-            <p className="caption mt-2">{flex.n} FLEX tests matched. {data.flexModel.metrics.validation}. {data.flexModel.disclaimer}</p>
+            <p className="caption mt-2">{flex ? `Evaluated at drawn test ${drawn?.test_number}. ` : ''}{data.flexModel.metrics.validation}. {data.flexModel.disclaimer}</p>
+            <FlexSpec data={data} />
           </Block>
         )}
 
         {psiShown.includes('PSI-25') && (
-          <Block title="Measurement limits (BASS-II, as NASA states them)">
+          <Supplemental title="BASS-II instrument limits (from the BASS-II report)"><Block title="Measurement limits (BASS-II, as NASA states them)">
             <ul className="space-y-1.5">
               {data.literature.instruments_bass2.map((x) => (
                 <li key={x.quantity} className="small text-ink2" title={`NASA: “${x.quote}”`}><b className="text-ink font-medium">{x.quantity}:</b> {x.limit}</li>
               ))}
             </ul>
             <p className="caption mt-1.5">BASS-II Summary Report, NASA/TM-20210011385, {data.literature.instruments_bass2.map((x) => x.where.split(';')[0]).filter((v, i, a) => a.indexOf(v) === i).join(', ')}.</p>
-          </Block>
+          </Block></Supplemental>
         )}
 
         <Block title="Matching tests">
@@ -606,7 +628,7 @@ export default function Lab({ data, arg = null }: { data: Dataset; arg?: string 
 function describeSample(shape: SampleShape, name: string | undefined,
   d: { diameter_mm: number | null; thickness_mm: number | null; width_mm: number | null },
   d0: number | null, state: State, lengthCm: number | null, widthCm: number | null) {
-  if (state === 'liquid') return `${name} droplet${d0 != null ? `, ${d0.toFixed(2)} mm initial diameter (median recorded)` : ', diameter not recorded in this table'}`
+  if (state === 'liquid') return `${name} droplet${d0 != null ? `, ${d0.toFixed(2)} mm initial diameter` : ', diameter not recorded for this test'}`
   if (state === 'gas') return `${name} burning on a burner`
   const parts = [`${name} ${shape}`]
   if (d.diameter_mm) parts.push(`${d.diameter_mm} mm diameter`)
@@ -883,5 +905,100 @@ function RunControls({ lit, neverLit, canStart, state, timeline, regime, onIgnit
         <span className="hud text-slate-300 hidden md:inline ml-auto">drag to orbit · scroll to zoom</span>
       </div>
     </div>
+  )
+}
+
+/** True when an evidence line cites a PSI table (or is our own illustration),
+ *  false when it cites a NASA report outside PSI. */
+function isPsiCite(cite: string) {
+  return /PSI-\d|Illustration|Test table/.test(cite) && !/NTRS|TM-|Summary Report/.test(cite)
+}
+
+function EvidenceList({ items }: { items: { text: string; cite: string }[] }) {
+  return (
+    <ul className="mt-2 space-y-2">
+      {items.map((e) => (
+        <li key={e.text} className="small text-ink2 grid sm:grid-cols-[1fr_240px] gap-x-4">
+          <span>{e.text}</span><span className="caption sm:text-right">{e.cite}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** One line per test in the "Drawn test" list. */
+function drawnOption(t: TestRecord, ending: string | null) {
+  const n = t.normalized
+  return [`${t.psi_id} · ${t.test_number}`, n.o2_percent != null ? `${n.o2_percent}% O₂` : 'O₂ not recorded',
+    n.flow_cm_s != null ? `${n.flow_cm_s} cm/s` : null, ending ?? 'no ending recorded'].filter(Boolean).join(' · ')
+}
+
+const TIER_LABEL: Record<string, string> = {
+  PSI_RAW: 'PSI table', PSI_DERIVED_CALIBRATION: 'PSI + NASA calibration', NTRS_APPENDIX_TRANSCRIBED: 'NTRS report (App. A)',
+}
+
+/** Empirical PSI Telemetry Overlay: the drawn row's own recorded values,
+ *  each with where it comes from. Blank cells say "not recorded". */
+function TelemetryHud({ data, t, cls, label, is1g }: { data: Dataset; t: TestRecord; cls: string | null; label: string | null; is1g: boolean }) {
+  const [open, setOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 768)
+  const inv = data.investigations.find((i) => i.psi_id === t.psi_id)
+  const n = t.normalized
+  const tier = (f: string) => TIER_LABEL[t.field_tiers?.[f] ?? t.data_source_tier] ?? 'PSI table'
+  const nr = <i className="text-slate-400">not recorded</i>
+  const kpa = n.pressure_kpa as number | null
+  const dims = [n.thickness_mm != null ? `${n.thickness_mm} mm thick` : null, n.width_mm != null ? `${n.width_mm} mm wide` : null,
+    n.diameter_mm != null ? `⌀ ${n.diameter_mm} mm` : null, n.droplet_d0_mm != null ? `d₀ ${n.droplet_d0_mm} mm` : null].filter(Boolean).join(', ')
+  const rows: [string, ReactNode, string][] = [
+    ['O₂', n.o2_percent != null ? `${n.o2_percent}%` : nr, tier('o2_percent')],
+    ['Pressure', kpa != null ? `${kpa} kPa · ${(kpa / 6.894757).toFixed(2)} psia` : nr, tier('pressure_kpa')],
+    ['Flow', n.flow_cm_s != null ? `${n.flow_cm_s} cm/s` : nr, tier('flow_cm_s')],
+    ['Direction', n.flow_direction ? n.flow_direction : nr, tier('flow_direction')],
+    ['Geometry', n.geometry || dims ? `${n.geometry ?? ''}${n.geometry && dims ? ', ' : ''}${dims}` : nr, tier('geometry')],
+    [is1g ? 'Outcome (1 g)' : 'Outcome', cls && label ? label : nr, cls ? tier(is1g ? 'outcome_1g_class' : 'outcome_class') : '—'],
+  ]
+  return (
+    <div className="absolute top-3 right-3 max-w-[calc(100%-1.5rem)] sm:max-w-[300px] rounded bg-black/65 text-slate-100 text-[12px] leading-snug">
+      <button onClick={() => setOpen((v) => !v)} className="w-full text-left px-3 py-1.5 font-medium flex items-center gap-2" aria-expanded={open}>
+        <span>Empirical PSI Telemetry Overlay</span><span className="ml-auto text-slate-400" aria-hidden>{open ? '−' : '+'}</span>
+      </button>
+      {open && (
+        <div className="px-3 pb-2.5">
+          <div className="num text-slate-300">{t.psi_id} · test {t.test_number}{inv?.doi ? <> · DOI {inv.doi}</> : null}</div>
+          <dl className="mt-1.5 grid grid-cols-[72px_1fr] gap-x-2 gap-y-1">
+            {rows.map(([k, v, src]) => (
+              <div key={k} className="contents"><dt className="text-slate-400">{k}</dt>
+                <dd className="num">{v}<span className="block text-[10.5px] text-slate-400">{src}</span></dd></div>
+            ))}
+          </dl>
+          {t.anomalies.length > 0 && <p className="mt-1.5 text-[11px] text-amber-300">Flagged: {t.anomalies.join(', ').replace(/_/g, ' ')}</p>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** What the FLEX model is, and when it refuses to give a number. */
+function FlexSpec({ data }: { data: Dataset }) {
+  const m = data.flexModel
+  return (
+    <details className="mt-3">
+      <summary className="caption cursor-pointer text-accent">Model specification and out-of-distribution guard</summary>
+      <div className="mt-2 space-y-2 caption">
+        <p>Logistic regression on standardised inputs, trained on {m.n_training_rows} PSI-69 FLEX rows ({m.n_condition_groups} distinct
+          conditions). Target: {m.target}.</p>
+        <table className="tbl"><thead><tr><th>Input</th><th className="text-right">Weight</th><th className="text-right">Range FLEX tested</th></tr></thead>
+          <tbody>{m.features.map((f, i) => (
+            <tr key={f}><td>{f.replace(/_/g, ' ')}</td><td className="text-right num">{m.weights[i].toFixed(2)}</td>
+              <td className="text-right num">{f === 'is_heptane' ? '0 or 1' : `${m.feature_ranges[f].min}–${m.feature_ranges[f].max}`}</td></tr>
+          ))}</tbody></table>
+        <p>Validation: {m.metrics.validation}. Accuracy {(m.metrics.accuracy * 100).toFixed(1)}% vs {(m.metrics.baseline_accuracy * 100).toFixed(1)}%
+          {' '}for always guessing extinction; balanced accuracy {(m.metrics.balanced_accuracy * 100).toFixed(1)}%; AUC {m.metrics.auc.toFixed(2)}.
+          Fold accuracies: {m.metrics.fold_accuracy.map((a) => `${(a * 100).toFixed(0)}%`).join(', ')}.</p>
+        <p><b className="text-ink font-medium">Out-of-distribution guard.</b> No number is shown when any input lies outside the range FLEX
+          tested, when the gas fractions add up to more than 100%, or when the combination is farther than {m.support.nn_threshold.toFixed(2)}
+          {' '}(standardised distance) from every condition FLEX actually ran. A logistic curve keeps giving numbers far from its data; this
+          guard stops the site from showing them.</p>
+      </div>
+    </details>
   )
 }

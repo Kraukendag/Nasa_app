@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Dataset } from '../../data'
 import { invLabel } from '../../data'
+import { Supplemental } from '../../context/DataModeContext'
 import type { TestRecord } from '../../types'
 
 const PAGE = 60
@@ -252,7 +253,7 @@ function downloadCsv(rows: TestRecord[]) {
     ['flow_direction', (t) => t.normalized.flow_direction], ['pressure_kpa', (t) => t.normalized.pressure_kpa],
     ['ending', (t) => t.normalized.outcome], ['nasa_words', (t) => t.normalized.outcome_text],
     ['nasa_words_source', (t) => t.normalized.outcome_source], ['data_quality_flags', (t) => t.anomalies.join('; ')],
-    ['raw_cells', (t) => JSON.stringify(t.raw)],
+    ['raw_cells', (t) => JSON.stringify(t.psi_raw_fields)],
   ]
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
   const csv = [cols.map((c) => c[0]).join(','), ...rows.map((t) => cols.map(([, f]) => esc(f(t))).join(','))].join('\n')
@@ -336,17 +337,17 @@ function RowDrawer({ t, data, onClose }: { t: TestRecord; data: Dataset; onClose
             </section>
           )}
           {t.psi_id === 'PSI-25' && (
-            <section>
+            <Supplemental title="instrument limits from the BASS-II report"><section>
               <h3 className="small font-semibold mb-2">Measurement limits NASA states for these instruments</h3>
               <ul className="small text-ink2 space-y-1">
                 {data.literature.instruments_bass2.map((x) => <li key={x.quantity}><b className="text-ink font-medium">{x.quantity}:</b> {x.limit} <span className="caption">(report {x.where})</span></li>)}
               </ul>
-            </section>
+            </section></Supplemental>
           )}
           <section>
             <h3 className="small font-semibold mb-2">Original CSV row, exactly as recorded</h3>
             <dl className="border border-rule rounded-md divide-y divide-rule">
-              {Object.entries(t.raw).map(([k, v]) => (
+              {Object.entries(t.psi_raw_fields).map(([k, v]) => (
                 <div key={k} className="px-3 py-1.5 grid grid-cols-2 gap-3 small">
                   <dt className="text-mute break-words">{k}</dt>
                   <dd className={`num break-words ${v ? '' : 'text-mute'}`}>{v ?? 'empty'}</dd>

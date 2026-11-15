@@ -14,9 +14,12 @@ import { useMemo, useState } from 'react'
 import type { Dataset } from '../data'
 import type { ResearchQuestion } from '../types'
 import { Page } from '../ui'
+import { useDataMode } from '../context/DataModeContext'
 
 export default function Questions({ data }: { data: Dataset }) {
   const all = data.findings.research_questions
+  const { strictPsiOnly, setStrict } = useDataMode()
+  const hidden = strictPsiOnly ? data.findings.research_questions_hidden ?? 0 : 0
   const picks = data.findings.team_picks.map((id) => all.find((x) => x.id === id)).filter((x): x is ResearchQuestion => !!x)
   const [theme, setTheme] = useState<string>('all')
   const [high, setHigh] = useState(false)
@@ -51,6 +54,12 @@ export default function Questions({ data }: { data: Dataset }) {
       taken. Together they are a map of what is still to be discovered.
     </>}>
       <div className="space-y-8">
+        {hidden > 0 && (
+          <p className="small text-ink2 border border-dashed border-rule rounded-md px-4 py-3">
+            {hidden} more questions cite NASA reports outside PSI and are hidden in strict mode.{' '}
+            <button className="underline" onClick={() => setStrict(false)}>Show them (PSI + NTRS mode)</button>
+          </p>
+        )}
         <section className="card p-6">
           <h2 className="h2">Team picks: the ten that matter most</h2>
           <p className="small text-ink2 mt-2 max-w-3xl">The questions this team would fund first for a lunar habitat. The full list of {all.length} follows.</p>

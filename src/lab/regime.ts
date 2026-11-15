@@ -56,7 +56,10 @@ export function decideRegime(p: {
   state: State; shape: SampleShape; gravity: '0g' | '1g' | 'none'; flow: number | null; lowestFlow: number | null
   direction: string | null; ending: Ending; topClass: string | null; flameletTests: string[]; matchingCount: number
   coolFlameRecorded: number; coolFlameTerritory: number; burner: string
+  /** The one PSI test the 3D view draws (its id), and whether NASA's notes record flamelets for it. */
+  drawnTest?: string | null; drawnFlamelet?: boolean
 }): Regime {
+  const who = p.drawnTest ? `Drawn test ${p.drawnTest} ended` : 'Most matching tests ended'
   const r: Regime = {
     behaviour: 'front', ending: p.ending, quench: false, holeBlowoff: false, canReignite: false,
     coolFlameAfter: false, disruption: false, label: '', evidence: [],
@@ -74,8 +77,8 @@ export function decideRegime(p: {
     r.behaviour = 'droplet'
     r.label = 'Droplet flame'
     add('A thin spherical flame surrounds the droplet and shrinks with it; the droplet diameter is the recorded starting value.', 'PSI-69 FLEX / PSI-39 CFI table')
-    if (p.topClass === 'Disruption') { r.disruption = true; add('Most matching tests ended in disruption: the droplet broke apart.', 'PSI-69 FLEX outcome column') }
-    if (p.topClass === 'Extinction') add('Most matching tests ended in extinction: the flame went out while fuel remained, at the recorded extinction diameter.', 'PSI-69 FLEX outcome column')
+    if (p.topClass === 'Disruption') { r.disruption = true; add(`${who} in disruption: the droplet broke apart.`, 'PSI-69 FLEX outcome column') }
+    if (p.topClass === 'Extinction') add(`${who} in extinction: the flame went out while fuel remained, at the recorded extinction diameter.`, 'PSI-69 FLEX outcome column')
     if (p.coolFlameTerritory > 0) {
       r.coolFlameAfter = true
       add(`${p.coolFlameTerritory} matching heptane tests are in cool-flame territory (above 2.4 mm), where FLEX researchers reported burning continuing invisibly after visible extinction. Drawn as a faint glow; the table records visible extinction only.`, 'PSI-69 FLEX science flag')
@@ -116,12 +119,13 @@ export function decideRegime(p: {
     const starved = THIN.has(p.shape) && flow != null && flow <= FLAMELET_MAX_FLOW
     // NASA's notes decide it only when most of the matching tests say so;
     // otherwise they are mentioned, and low airflow is the trigger.
-    const noted = p.flameletTests.length > 0 && p.flameletTests.length * 2 >= p.matchingCount
+    // With one drawn test, only that test's own notes count.
+    const noted = p.drawnTest ? !!p.drawnFlamelet : p.flameletTests.length > 0 && p.flameletTests.length * 2 >= p.matchingCount
     if (starved || noted) {
       r.behaviour = 'fingering'
       r.canReignite = true
       r.label = 'Starved flame breaking into flamelets'
-      if (noted) add(`NASA's notes for matching test${p.flameletTests.length > 1 ? 's' : ''} ${p.flameletTests.join(' and ')} record the flame turning into flamelets.`, 'BASS-II Summary Report, App. A, p. 113')
+      if (noted) add(p.drawnTest ? `NASA's notes for drawn test ${p.drawnTest} record the flame turning into flamelets.` : `NASA's notes for matching test${p.flameletTests.length > 1 ? 's' : ''} ${p.flameletTests.join(' and ')} record the flame turning into flamelets.`, 'BASS-II Summary Report, App. A, p. 113')
       add(`At very low airflow (${flow != null ? `${flow} cm/s` : 'low'}; flamelets drawn at or below ${FLAMELET_MAX_FLOW} cm/s, where NASA saw them) the front breaks into flamelets that survive by drawing oxygen from the sides, branch and die, leaving char fingers.`,
         'NASA Glenn, NTRS 20050217475 (ground experiment simulating microgravity)')
       add('If the airflow is turned back up, the flamelets flare up and re-form a full flame front.', 'NASA Glenn, NTRS 20050217475')

@@ -15,6 +15,7 @@ import SiliconeChart from '../components/SiliconeChart'
 const MatchScene = lazy(() => import('../components/MatchScene'))
 import WebGLErrorBoundary, { isWebGLAvailable } from '../components/WebGLErrorBoundary'
 import MatchSceneFallback2D from '../three/MatchSceneFallback2D'
+import { Supplemental, useDataMode } from '../context/DataModeContext'
 
 const SITE = [
   ['#/habitat', 'Lunar habitat', 'Five evidence-backed recommendations for a habitat at 30% oxygen and one-sixth gravity.'],
@@ -27,7 +28,8 @@ const SITE = [
   ['#/pipeline', 'Pipeline', 'How the data was built, and where AI did the work: reading a 144-page NASA report.'],
 ]
 
-export default function Home({ data }: { data: Dataset }) {
+export default function Home({ data, full }: { data: Dataset; full: Dataset }) {
+  const { strictPsiOnly } = useDataMode()
   const [lit, setLit] = useState(false)
   const [gravityOn, setGravityOn] = useState(true)
   // 2D schematic when the device has no WebGL, when 3D fails, or on request.
@@ -37,8 +39,8 @@ export default function Home({ data }: { data: Dataset }) {
   const f = data.findings
   const pmmaTests = data.tests.filter((t) => t.psi_id === 'PSI-25' && t.normalized.material === 'PMMA')
   const noHighlight = new Set<string>()
-  const pmmaCard = data.materials.find((m) => m.id === 'PMMA|solid')?.lowest_sustained_o2
-  const example = data.tests.find((t) => t.psi_id === 'PSI-25' && t.test_number === (pmmaCard?.test ?? 'O4'))
+  const pmmaCard = full.materials.find((m) => m.id === 'PMMA|solid')?.lowest_sustained_o2
+  const example = full.tests.find((t) => t.psi_id === 'PSI-25' && t.test_number === (pmmaCard?.test ?? 'O4'))
   const examplePage = (example?.normalized.outcome_source ?? '').match(/p\. (\d+)/)?.[1]
   const pmma = data.materials.find((m) => m.id === 'PMMA|solid')?.lowest_sustained_o2
 
@@ -103,7 +105,7 @@ export default function Home({ data }: { data: Dataset }) {
         <div className="grid lg:grid-cols-2 gap-6 mt-6">
           <Fig n={2} caption={<>Every BASS-II PMMA test by oxygen and airflow, marked by how it ended. The lowest oxygen with an
             established flame was {pmma ? `${pmma.o2}% (test ${pmma.test})` : 'not recorded'}. No boundary is fitted: the points are the evidence.</>}
-               source="PSI-25 BASS-II table; endings from NASA/TM-20210011385 App. A.">
+               source={strictPsiOnly ? 'PSI-25 BASS-II table only (strict mode: report endings hidden).' : 'PSI-25 BASS-II table; endings from NASA/TM-20210011385 App. A.'}>
             <div className="p-3 sm:p-4">
               <FlammabilityMap tests={pmmaTests} highlight={noHighlight} selectedO2={null} selectedFlow={null} />
             </div>
@@ -135,7 +137,8 @@ export default function Home({ data }: { data: Dataset }) {
             </ul>
             <a href="#/pipeline" className="inline-block mt-4">See the full pipeline and the checks →</a>
           </div>
-          <figure className="figure self-start">
+          <div className="self-start"><Supplemental title="an Appendix A transcription from the BASS-II report">
+          <figure className="figure">
             <div className="grid sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-rule">
               <div className="p-4 bg-wash/50">
                 <p className="caption font-medium text-ink2">NASA report, test {example?.test_number}, p. {examplePage}</p>
@@ -153,6 +156,7 @@ export default function Home({ data }: { data: Dataset }) {
             <figcaption className="figcap"><b>Fig. 4.</b> One of {bc.observations} transcriptions: the report's note (left) becomes a
               searchable, citable row (right). <span className="text-mute">Source: NASA/TM-20210011385, Appendix A.</span></figcaption>
           </figure>
+          </Supplemental></div>
         </div>
       </section>
 
@@ -196,7 +200,9 @@ export default function Home({ data }: { data: Dataset }) {
           <Stat value={data.tests.length.toLocaleString()} label="records from 14 PSI tables" />
           <Stat value={withOutcome} label="tests with a recorded ending" />
           <Stat value={`${bc.observations} / ${bc.endings_report}`} label="observations / endings AI extracted from NASA's BASS-II report" />
-          <Stat value={`${data.literature.points.length} + ${data.literature.saffire_iv_vi.length}`} label="measured results + test conditions from NASA work beyond PSI" />
+          {strictPsiOnly
+            ? <Stat value={data.investigations.length} label="PSI investigations, each with its DOI" />
+            : <Stat value={`${data.literature.points.length} + ${data.literature.saffire_iv_vi.length}`} label="measured results + test conditions from NASA work beyond PSI" />}
           <Stat value={data.findings.research_questions.length} label="open research questions" />
         </div>
       </section>

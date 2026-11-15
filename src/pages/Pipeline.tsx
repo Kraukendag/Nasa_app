@@ -75,7 +75,7 @@ export default function Pipeline({ data }: { data: Dataset }) {
         <div className="space-y-6">
           {examples.map((t, i) => {
             const n = t.normalized
-            const raw = t.raw
+            const raw = t.psi_raw_fields
             return (
               <Fig key={t.id} n={i + 1} caption={<>Test {t.test_number}: what the PSI table holds (left), what the report says
                 (middle), and the row the pipeline produced (right).</>} source={n.outcome_source ?? undefined}>

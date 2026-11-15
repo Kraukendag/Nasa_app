@@ -236,9 +236,33 @@ def main():
     attach_material_context(materials, real, literature)
     flex = build_flex_model(per_inv["PSI-69"])
 
-    outputs = {"investigations.json": investigations, "tests.json": all_tests,
+    # ---- STRICT NASA-PSI MODE -------------------------------------------------
+    # The site's default view uses ONLY the PSI tables. Everything derived from
+    # outside them is labelled by tier, and PSI-only versions of the summaries
+    # are built from rows with the BASS-II Appendix A transcription removed.
+    strict_all = strip_appendix(all_tests)
+    strict_real = [t for t in strict_all if not t["is_note"] and not t["is_flow_vis"]]
+    strict_per_inv = {}
+    for t in strict_all:
+        strict_per_inv.setdefault(t["psi_id"], []).append(t)
+    no_lit = {**literature, "points": [], "saffire_iv_vi": []}
+    materials_strict = derive.build_materials(strict_all)
+    attach_material_context(materials_strict, strict_real, no_lit)
+    investigations_strict = derive.build_investigations(strict_per_inv)
+    findings_strict = strict_findings(findings, strict_all, strict_real, doi_of)
+    for t in all_tests:
+        label_tiers(t)
+    # Every column of every PSI table, with how many rows record a value and
+    # how many leave it blank. Blank stays blank: nothing is filled in.
+    for inv_list in (investigations, investigations_strict):
+        for inv in inv_list:
+            inv["column_coverage"] = column_coverage(per_inv.get(inv["psi_id"], []))
+
+    outputs = {"investigations.json": investigations, "tests.json": [export_record(t) for t in all_tests],
                "materials.json": materials, "findings.json": findings,
-               "flex_model.json": flex, "literature.json": literature}
+               "flex_model.json": flex, "literature.json": {**literature, "data_source_tier": "NTRS_EXTERNAL_LITERATURE"},
+               "investigations_strict.json": investigations_strict, "materials_strict.json": materials_strict,
+               "findings_strict.json": findings_strict}
     stale = os.path.join(OUT_DIR, "knowledge.json")       # "Ask the data" was removed
     if os.path.exists(stale):
         os.remove(stale)
@@ -262,6 +286,102 @@ def main():
           f"{len(findings['anomaly_summary'])} types; science flags: {sum(findings['science_flag_summary'].values())}")
     print(f"  Highest solid-fuel oxygen in this dataset: {max_solid_o2:g}%")
     print("=" * 72)
+
+
+# ---------------------------------------------------------------------------
+#  DATA-SOURCE TIERS
+# ---------------------------------------------------------------------------
+#  PSI_RAW                    read from data_raw/PSI-*.csv
+#  PSI_DERIVED_CALIBRATION    BASS-II airflow: Air display x 1.0066 (NASA's fan
+#                             calibration file in the PSI-25 resources)
+#  NTRS_APPENDIX_TRANSCRIBED  BASS-II flow direction and test endings, from the
+#                             AI-assisted transcription of NASA/TM-20210011385
+#  NTRS_EXTERNAL_LITERATURE   everything in literature.json
+APPENDIX_FIELDS = ("flow_direction", "outcome", "outcome_class", "outcome_text", "outcome_source")
+CALIBRATED_FIELDS = ("flow_cm_s", "flow_min_cm_s", "flow_max_cm_s", "flow_sequence_cm_s")
+
+
+def label_tiers(t):
+    """Tier of the record and of every field that is not read verbatim."""
+    t["data_source_tier"] = "PSI_RAW"
+    tiers = {}
+    if t["psi_id"] == "PSI-25":
+        for f in CALIBRATED_FIELDS:
+            if t["normalized"].get(f) not in (None, []):
+                tiers[f] = "PSI_DERIVED_CALIBRATION"
+        t["normalized"]["air_display_raw"] = t["raw"].get("Air display")
+        sup = {f: t["normalized"].get(f) for f in APPENDIX_FIELDS
+               if t["normalized"].get(f) is not None and (f == "flow_direction" or
+                  (t["normalized"].get("outcome_source") or "").startswith("NASA/TM-20210011385"))}
+        if sup:
+            t["ntrs_supplemental_fields"] = sup
+            for f in sup:
+                tiers[f] = "NTRS_APPENDIX_TRANSCRIBED"
+    t["field_tiers"] = tiers
+
+
+def export_record(t):
+    """The record as written to tests.json: NASA's cells under psi_raw_fields."""
+    out = {k: v for k, v in t.items() if k != "raw"}
+    out["psi_raw_fields"] = t["raw"]
+    return out
+
+
+def column_coverage(rows):
+    """Recorded vs blank count for each raw column of one PSI table, in file order."""
+    cols = []
+    for t in rows:
+        for k in t["raw"]:
+            if k not in cols:
+                cols.append(k)
+    data = [t for t in rows if not t["is_note"]]
+    out = []
+    for k in cols:
+        rec = sum(1 for t in data if t["raw"].get(k) is not None)
+        out.append({"column": k.strip(), "recorded": rec, "blank": len(data) - rec})
+    return out
+
+
+def strip_appendix(all_tests):
+    """A copy of the rows with every Appendix-A-derived field set to null."""
+    import copy
+    out = copy.deepcopy(all_tests)
+    for t in out:
+        if t["psi_id"] != "PSI-25":
+            continue
+        n = t["normalized"]
+        n["flow_direction"] = None
+        if (n.get("outcome_source") or "").startswith("NASA/TM-20210011385"):
+            for f in ("outcome", "outcome_class", "outcome_text", "outcome_source"):
+                n[f] = None
+    return out
+
+
+def strict_findings(findings, strict_all, strict_real, doi_of):
+    """Findings for the strict PSI-only view: nothing from NTRS documents or
+    the Appendix A transcription. Three PSI-table results take the place of
+    the key insights that relied on them."""
+    out = dict(findings)
+    by_id = {s["id"]: s for s in findings["surprises"]}
+    keep = [k for k in findings["key_insights"] if k["psi_id"] and not k["lit"]]          # e.g. silicone (PSI-99)
+    for sid in ("cool_flames_recorded", "mixed_material_selectivity"):
+        s_ = by_id.get(sid)
+        if s_:
+            ev = s_["evidence"]
+            keep.append({"id": sid, "headline": s_["title"], "detail": s_["text"], "psi_id": ev.get("psi_id"),
+                         "doi": ev.get("doi") or doi_of.get(ev.get("psi_id")), "lit": [], "source": ev.get("psi_id")})
+    out["key_insights"] = keep[:3]
+    out["negative_knowledge"] = derive.build_negative_knowledge(strict_all, doi_of)
+    out["flamelets"] = []
+    # The invisible-cool-flame note rests on what FLEX researchers reported
+    # outside the table, so it is left out of the strict view.
+    out["surprises"] = [x for x in findings["surprises"] if x["id"] != "invisible_cool_flames"]
+    lit_keys = set(build_literature()["sources"])
+    out["research_questions"] = [q for q in findings["research_questions"] if not set(q["refs"]) & lit_keys]
+    out["research_questions_hidden"] = len(findings["research_questions"]) - len(out["research_questions"])
+    out["team_picks"] = [q for q in findings["team_picks"] if q in {r["id"] for r in out["research_questions"]}]
+    out["mode"] = "strict_psi"
+    return out
 
 
 def bass2_counts(all_tests):

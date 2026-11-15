@@ -64,7 +64,14 @@ export interface TestRecord {
   acronym: string
   test_number: string | null
   row_index: number
-  raw: Record<string, string | null>
+  /** NASA's cells exactly as recorded in the PSI table. */
+  psi_raw_fields: Record<string, string | null>
+  /** PSI_RAW for every record; see field_tiers for fields that are not verbatim. */
+  data_source_tier: 'PSI_RAW'
+  /** Fields that are calibrated (PSI_DERIVED_CALIBRATION) or transcribed from the BASS-II report (NTRS_APPENDIX_TRANSCRIBED). */
+  field_tiers: Record<string, 'PSI_DERIVED_CALIBRATION' | 'NTRS_APPENDIX_TRANSCRIBED'>
+  /** Copy of the Appendix A fields merged into this row (BASS-II only). */
+  ntrs_supplemental_fields?: Record<string, unknown>
   normalized: Normalized
   /** Data-quality problems: typos, failed sensors, inconsistent units. */
   anomalies: string[]
@@ -105,6 +112,8 @@ export interface Investigation {
   max_sample_area_cm2: number | null
   embedded_notes: string[]
   anomaly_count: number
+  /** Every column of the PSI table: rows that record a value vs rows left blank. */
+  column_coverage: { column: string; recorded: number; blank: number }[]
 }
 
 export interface GravityComparison {
@@ -233,6 +242,8 @@ export interface Findings {
   negative_knowledge: NegativeEntry[]
   coverage: Coverage
   research_questions: ResearchQuestion[]
+  /** Strict mode only: how many questions were left out because they cite non-PSI reports. */
+  research_questions_hidden?: number
   team_picks: string[]
   flamelets: { test: string; text: string; source: string }[]
   recommendations: Recommendation[]

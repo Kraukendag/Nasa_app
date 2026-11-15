@@ -15,6 +15,8 @@ export interface Dataset {
   findings: Findings
   flexModel: FlexModel
   literature: Literature
+  /** PSI-only versions (BASS-II Appendix A transcription removed). */
+  strict: { investigations: Investigation[]; materials: MaterialCard[]; findings: Findings }
 }
 
 export async function loadDataset(): Promise<Dataset> {
@@ -24,15 +26,18 @@ export async function loadDataset(): Promise<Dataset> {
     if (!response.ok) throw new Error(`Could not load ${name}`)
     return response.json() as Promise<T>
   }
-  const [tests, investigations, materials, findings, flexModel, literature] = await Promise.all([
+  const [tests, investigations, materials, findings, flexModel, literature, invS, matS, findS] = await Promise.all([
     get<TestRecord[]>('tests.json'),
     get<Investigation[]>('investigations.json'),
     get<MaterialCard[]>('materials.json'),
     get<Findings>('findings.json'),
     get<FlexModel>('flex_model.json'),
     get<Literature>('literature.json'),
+    get<Investigation[]>('investigations_strict.json'),
+    get<MaterialCard[]>('materials_strict.json'),
+    get<Findings>('findings_strict.json'),
   ])
-  return { tests, investigations, materials, findings, flexModel, literature }
+  return { tests, investigations, materials, findings, flexModel, literature, strict: { investigations: invS, materials: matS, findings: findS } }
 }
 
 /** Find the card for a material in a given state (silicone-as-solid and
