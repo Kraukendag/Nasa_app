@@ -26,15 +26,16 @@ import Questions from './pages/Questions'
 import Pipeline from './pages/Pipeline'
 import About from './pages/About'
 
+// The four main parts come first, so they are one click away on the left.
 const NAV: { id: PageId; label: string }[] = [
-  { id: 'habitat', label: 'Lunar habitat' },
   { id: 'lab', label: 'Experiment Lab' },
   { id: 'data', label: 'Data' },
-  { id: 'findings', label: 'Findings' },
-  { id: 'ranking', label: 'Ranking' },
   { id: 'questions', label: 'Research questions' },
-  { id: 'pipeline', label: 'Pipeline' },
+  { id: 'ranking', label: 'Ranking' },
+  { id: 'habitat', label: 'Lunar habitat' },
+  { id: 'findings', label: 'Findings' },
   { id: 'search', label: 'AI search' },
+  { id: 'pipeline', label: 'Pipeline' },
   { id: 'about', label: 'About' },
 ]
 const PAGES = new Set<string>(['home', ...NAV.map((n) => n.id)])
