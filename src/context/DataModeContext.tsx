@@ -65,13 +65,14 @@ export function Supplemental({ children, title }: { children: ReactNode; title?:
 }
 
 /** The pill in the top bar that switches the mode. */
-export function DataModePill() {
+export function DataModePill({ compact = false }: { compact?: boolean }) {
   const { strictPsiOnly, setStrict } = useDataMode()
+  const full = strictPsiOnly ? 'Data Mode: 100% NASA PSI Strict' : 'Data Mode: PSI + NTRS Supplemental'
   return (
-    <button onClick={() => setStrict(!strictPsiOnly)} aria-pressed={strictPsiOnly}
+    <button onClick={() => setStrict(!strictPsiOnly)} aria-pressed={strictPsiOnly} aria-label={full}
             title="Strict: only the 14 NASA PSI tables. Supplemental: adds the BASS-II report transcription and other NASA reports (NTRS)."
-            className={`shrink-0 rounded-full border px-3 py-1 text-[12.5px] font-medium ${strictPsiOnly ? 'border-[#1f7a4d] text-[#1f7a4d] bg-[#1f7a4d]/5' : 'border-accent text-accent bg-accent/5'}`}>
-      {strictPsiOnly ? 'Data Mode: 100% NASA PSI Strict' : 'Data Mode: PSI + NTRS Supplemental'}
+            className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-[12.5px] font-medium ${strictPsiOnly ? 'border-[#1f7a4d] text-[#1f7a4d] bg-[#1f7a4d]/5' : 'border-accent text-accent bg-accent/5'}`}>
+      {compact ? (strictPsiOnly ? 'PSI Strict' : 'PSI + NTRS') : full}
     </button>
   )
 }

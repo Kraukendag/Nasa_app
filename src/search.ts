@@ -12,7 +12,15 @@
 //     link to where it lives on the site.
 // =============================================================================
 
-export interface SearchDoc { type: string; id: string; title: string; text: string; link: string }
+/** Where an item comes from: a PSI table (with DOI), a NASA report outside PSI (NTRS), or both. */
+export interface DocSource { kind: 'psi' | 'ntrs' | 'mixed'; psi?: string | null; doi?: string | null; ntrs?: string | string[] | null; title?: string; appendix?: boolean }
+export interface SearchDoc {
+  type: string; id: string; title: string; text: string; link: string; src: DocSource
+  /** Kept in strict PSI mode. */
+  strict: boolean
+  /** The same item with Appendix A (NTRS) fields removed, for strict mode. */
+  text_strict?: string
+}
 interface Index { model: string; dim: number; count: number; docs: SearchDoc[]; vectors_int8_base64: string }
 export interface Hit { doc: SearchDoc; score: number }
 
@@ -73,18 +81,63 @@ function loadModel() {
 /** Start downloading the index and model early (e.g. when the box is focused). */
 export function warmUp() { void loadIndex(); void loadModel() }
 
-export async function search(query: string, k = 20, types?: Set<string>): Promise<Hit[]> {
+export async function search(query: string, k = 20, keep: (d: SearchDoc) => boolean = () => true): Promise<Hit[]> {
   const [ix, embed] = await Promise.all([loadIndex(), loadModel()])
   const out = await embed(query, { pooling: 'mean', normalize: true })
   const q = out.data as Float32Array
   const { docs, vecs, dim } = ix
   const hits: Hit[] = []
   for (let i = 0; i < docs.length; i++) {
-    if (types && types.size && !types.has(docs[i].type)) continue
+    if (!keep(docs[i])) continue
     let s = 0
     const o = i * dim
     for (let j = 0; j < dim; j++) s += q[j] * vecs[o + j]
     hits.push({ doc: docs[i], score: s / 127 })
   }
   return hits.sort((a, b) => b.score - a.score).slice(0, k)
+}
+
+// ---- Keyword fallback -------------------------------------------------------
+// When the model cannot load (blocked download, old browser, slow phone) the
+// page still answers, by matching WORDS instead of meaning. Each query word
+// counts more when it is rare across the index (inverse document frequency).
+const STOP = new Set('the a an and or of in on at to for with by from is are was were be that this which what how did do does it its as into than then'.split(' '))
+const words = (x: string) => x.toLowerCase().normalize('NFKD').replace(/[^a-z0-9.%-]+/g, ' ').split(' ').filter((w) => w.length > 1 && !STOP.has(w))
+let idf: Map<string, number> | null = null
+
+export async function lexicalSearch(query: string, k = 20, keep: (d: SearchDoc) => boolean = () => true): Promise<Hit[]> {
+  const { docs } = await loadIndex()
+  if (!idf) {
+    const df = new Map<string, number>()
+    for (const d of docs) new Set(words(`${d.title} ${d.text}`)).forEach((w) => df.set(w, (df.get(w) ?? 0) + 1))
+    idf = new Map([...df].map(([w, n]) => [w, Math.log(1 + docs.length / n)]))
+  }
+  const q = [...new Set(words(query))]
+  if (!q.length) return []
+  const max = q.reduce((a, w) => a + (idf!.get(w) ?? 0), 0) || 1
+  const hits: Hit[] = []
+  for (const d of docs) {
+    if (!keep(d)) continue
+    const have = new Set(words(`${d.title} ${d.text}`))
+    // A query word also matches a longer form ("burn" finds "burned").
+    const s = q.reduce((a, w) => a + (have.has(w) || [...have].some((h) => h.startsWith(w) && w.length > 3) ? idf!.get(w) ?? 0 : 0), 0)
+    if (s > 0) hits.push({ doc: d, score: s / max })
+  }
+  return hits.sort((a, b) => b.score - a.score).slice(0, k)
+}
+
+/** AI search, or keyword search when the model fails or takes longer than
+ *  `waitMs` to become ready (the download keeps going in the background, so
+ *  a later search can use the model). */
+export async function searchWithFallback(query: string, k: number, keep: (d: SearchDoc) => boolean, waitMs = 8000):
+  Promise<{ hits: Hit[]; mode: 'semantic' | 'lexical'; reason?: string }> {
+  const ready = loadModel().then(() => 'ready' as const, (e: Error) => e)
+  const timer = new Promise<'timeout'>((r) => setTimeout(() => r('timeout'), waitMs))
+  const first = await Promise.race([ready, timer])
+  if (first === 'ready') {
+    try { return { hits: await search(query, k, keep), mode: 'semantic' } } catch (e) { return { hits: await lexicalSearch(query, k, keep), mode: 'lexical', reason: (e as Error).message } }
+  }
+  if (first instanceof Error) embedP = null           // allow a retry next time
+  return { hits: await lexicalSearch(query, k, keep), mode: 'lexical',
+    reason: first === 'timeout' ? `the AI model was not ready after ${waitMs / 1000} s` : first.message }
 }

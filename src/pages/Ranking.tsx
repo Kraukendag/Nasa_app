@@ -219,6 +219,7 @@ export default function Ranking({ data }: { data: Dataset }) {
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-0.5 mt-2 caption num">
                   {CRITERIA.map((c) => <div key={c.k} className="flex justify-between gap-2"><dt>{c.label}</dt><dd>{r.s[c.k].toFixed(2)}</dd></div>)}
                 </dl>
+                <span className="block mt-2 small text-accent">{open === r.i.psi_id ? 'Hide' : 'Show'} score calculation breakdown</span>
               </button>
               {open === r.i.psi_id && <WhyItRanks r={r} w={w} totalW={totalW} />}
             </li>
@@ -238,7 +239,8 @@ export default function Ranking({ data }: { data: Dataset }) {
                 <Fragment key={r.i.psi_id}>
                   <tr onClick={() => setOpen(open === r.i.psi_id ? null : r.i.psi_id)} className="cursor-pointer hover:bg-wash">
                     <td className="num text-mute">{n + 1}</td>
-                    <td><span className="num">{r.i.psi_id}</span> <b className="font-medium">{r.i.acronym}</b><div className="caption truncate max-w-[260px]">{r.i.title}</div></td>
+                    <td><span className="num">{r.i.psi_id}</span> <b className="font-medium">{r.i.acronym}</b><div className="caption truncate max-w-[260px]">{r.i.title}</div>
+                      <span className="caption text-accent">{open === r.i.psi_id ? '▾' : '▸'} Score calculation breakdown</span></td>
                     {CRITERIA.map((c) => (
                       <td key={c.k} className={`text-right num ${w[c.k] === 0 ? 'text-mute/60' : ''}`}>{r.s[c.k].toFixed(2)}</td>
                     ))}
@@ -308,8 +310,31 @@ export default function Ranking({ data }: { data: Dataset }) {
 
 function WhyItRanks({ r, w, totalW }: { r: Scored; w: Record<Crit, number>; totalW: number }) {
   const sum = CRITERIA.reduce((a, c) => a + w[c.k] * r.s[c.k], 0)
+  const i = r.i
+  const rng = (x: { min: number; max: number } | null, u: string) => (x ? `${+x.min.toFixed(2)}–${+x.max.toFixed(2)}${u}` : 'not recorded')
+  const withEnding = Math.round(i.outcome_fraction * i.test_count)
+  // The investigation's own numbers that every score above is computed from.
+  const raw: [string, string][] = [
+    ['Tests (rows that are tests)', `${i.test_count} of ${i.row_count} rows`],
+    ['Oxygen recorded', rng(i.o2_range, '%')],
+    ['Pressure recorded', rng(i.pressure_kpa_range, ' kPa')],
+    ['Tests with a recorded ending', `${withEnding} of ${i.test_count} (${(i.outcome_fraction * 100).toFixed(1)}%)`],
+    ['Fuel state', i.fuel_state],
+    ['Largest recorded sample', i.max_sample_area_cm2 ? `${i.max_sample_area_cm2.toLocaleString()} cm²` : 'not recorded'],
+    ['Normal-gravity reference', i.has_1g_reference ? 'recorded' : 'none'],
+    ['Flagged anomalies', `${i.anomaly_count}`],
+  ]
   return (
     <div className="mt-2">
+      <h4 className="small font-semibold">Score Calculation Breakdown</h4>
+      <p className="font-mono text-[12.5px] bg-card border border-rule rounded px-3 py-2 mt-2 inline-block">
+        Final Score = (Σ(weight_i × score_i) ÷ Σ(weight_i)) × 100
+      </p>
+      <h5 className="caption font-medium text-ink2 mt-3">Raw statistics from the PSI table{i.doi ? ` (DOI ${i.doi})` : ''}</h5>
+      <dl className="grid sm:grid-cols-2 gap-x-6 gap-y-1 mt-1 small">
+        {raw.map(([k, v]) => <div key={k} className="flex justify-between gap-3 border-b border-rule/60 py-0.5"><dt className="text-ink2">{k}</dt><dd className="num text-right">{v}</dd></div>)}
+      </dl>
+      <h5 className="caption font-medium text-ink2 mt-3">Each criterion</h5>
       <table className="w-full small">
         <thead><tr className="text-left caption"><th className="font-medium py-1 pr-3">Criterion</th><th className="font-medium py-1 pr-3">Reason</th><th className="font-medium py-1 text-right whitespace-nowrap">weight × score</th></tr></thead>
         <tbody>
@@ -321,7 +346,7 @@ function WhyItRanks({ r, w, totalW }: { r: Scored; w: Record<Crit, number>; tota
             </tr>
           ))}
           <tr className="border-t border-ink2/40">
-            <td className="py-2 font-medium" colSpan={2}>Sum ÷ total weight × 100</td>
+            <td className="py-2 font-medium" colSpan={2}>Σ(weight × score) ÷ Σ(weight) × 100</td>
             <td className="py-2 text-right num font-medium whitespace-nowrap">{sum.toFixed(2)} ÷ {totalW} × 100 = {Math.round(r.value * 100)}</td>
           </tr>
         </tbody>

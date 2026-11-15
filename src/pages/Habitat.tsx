@@ -11,7 +11,8 @@
 // =============================================================================
 
 import type { Dataset } from '../data'
-import { LitCite, Page, PsiCite, Section } from '../ui'
+import { Fig, LitCite, Page, PsiCite, Section } from '../ui'
+import HabitatEnvelope from '../components/HabitatEnvelope'
 
 export default function Habitat({ data }: { data: Dataset }) {
   const f = data.findings
@@ -40,25 +41,38 @@ export default function Habitat({ data }: { data: Dataset }) {
         </ol>
       </Section>
 
+      <Fig n={1} caption={<>0 g vs. 1 g bounding envelope: every PSI test that records oxygen, placed by oxygen and pressure, against
+        the planned habitat. The dashed box is the lowest-to-highest range of the microgravity tests; it is a boundary of what
+        was tested, not a fitted flammability limit. “Closest” weighs 1 point of oxygen the same as 10 kPa.</>}
+           source="NASA PSI test tables only (14 investigations); habitat target from the challenge statement.">
+        <div className="p-3 sm:p-5"><HabitatEnvelope data={data} /></div>
+      </Fig>
+
       {f.recommendations.map((r) => (
         <section key={r.id} id={`rec-${r.id}`} className="scroll-mt-6 card p-6 sm:p-8">
           <p className="num caption">{r.id}</p>
           <h2 className="h2 mt-1">{r.title}</h2>
           <p className="lede mt-3">{r.action}</p>
 
-          <h3 className="small font-semibold mt-6">Evidence</h3>
-          <ul className="mt-2 divide-y divide-rule border-y border-rule">
-            {r.evidence.map((e, i) => (
-              <li key={i} className="py-3 grid md:grid-cols-[1fr_280px] gap-x-6 gap-y-1">
-                <p className="text-ink2">{e.text}</p>
-                <div className="md:text-right">
-                  {e.psi && <PsiCite data={data} psi={e.psi} />}
-                  {e.lit && <LitCite data={data} keyName={e.lit} />}
-                  {!e.psi && !e.lit && <span className="caption">computed across all PSI tables</span>}
-                </div>
-              </li>
-            ))}
-          </ul>
+          {/* Evidence in two groups: the PSI tables, then NASA reports outside PSI. */}
+          {([['NASA PSI evidence', r.evidence.filter((e) => !e.lit)], ['Other NASA reports (NTRS)', r.evidence.filter((e) => e.lit)]] as const)
+            .filter(([, items]) => items.length > 0).map(([title, items]) => (
+            <div key={title}>
+              <h3 className="small font-semibold mt-6">{title}</h3>
+              <ul className="mt-2 divide-y divide-rule border-y border-rule">
+                {items.map((e, i) => (
+                  <li key={i} className="py-3 grid md:grid-cols-[1fr_280px] gap-x-6 gap-y-1">
+                    <p className="text-ink2">{e.text}</p>
+                    <div className="md:text-right">
+                      {e.psi && <PsiCite data={data} psi={e.psi} />}
+                      {e.lit && <LitCite data={data} keyName={e.lit} />}
+                      {!e.psi && !e.lit && <span className="caption">computed across all PSI tables</span>}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
 
           <h3 className="small font-semibold mt-6">How strong is this?</h3>
           <p className="small text-ink2 mt-1">{r.strength}</p>

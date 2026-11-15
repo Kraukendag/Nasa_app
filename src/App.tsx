@@ -105,11 +105,13 @@ function Shell() {
             <img src={`${import.meta.env.BASE_URL}brand/microflamma-mark-light.png`} alt="" className="h-10 w-10 object-contain" />
             <span className="font-serif font-semibold text-lg text-ink tracking-tight">Micro Flamma</span>
           </a>
-          <span className="hidden xl:inline-flex ml-4"><DataModePill /></span>
+          {/* Short label where the full one would push the page links onto two lines. */}
+          <span className="hidden xl:inline-flex 2xl:hidden ml-4"><DataModePill compact /></span>
+          <span className="hidden 2xl:inline-flex ml-4"><DataModePill /></span>
           <nav className="hidden xl:flex items-center gap-0.5 ml-auto" aria-label="Pages">
             {NAV.map((n) => (
               <a key={n.id} href={`#/${n.id}`} aria-current={page === n.id ? 'page' : undefined}
-                 className={`px-2.5 py-2 rounded no-underline hover:no-underline text-[14px] transition-colors
+                 className={`px-2.5 py-2 rounded whitespace-nowrap no-underline hover:no-underline text-[14px] transition-colors
                    ${page === n.id ? 'text-ink font-medium bg-wash' : 'text-ink2 hover:text-ink'}`}>
                 {n.label}
               </a>

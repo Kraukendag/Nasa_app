@@ -221,7 +221,12 @@ export default function Lab({ data, arg = null }: { data: Dataset; arg?: string 
   const dShape: SampleShape = state === 'liquid' ? 'droplet' : state === 'gas' ? 'burner'
     : (SHAPES.includes(dn?.geometry as SampleShape) ? dn!.geometry as SampleShape : shape)
   const dDims = { diameter_mm: dn?.diameter_mm ?? null, thickness_mm: dn?.thickness_mm ?? null, width_mm: dn?.width_mm ?? null }
-  const dFlow = state === 'solid' ? round(dn?.flow_cm_s ?? null, 2) : null
+  // A BASS-II test often stepped through several airflows. If the airflow you
+  // chose is one this test recorded, draw that one (still the test's own value).
+  const rowFlows = dn ? (dn.flow_sequence_cm_s.length ? dn.flow_sequence_cm_s : [dn.flow_cm_s]) : []
+  const dFlow = state !== 'solid' ? null
+    : sel.flow != null && rowFlows.some((f) => f != null && Math.abs(f - Number(sel.flow)) < 1e-9) ? Number(sel.flow)
+      : round(dn?.flow_cm_s ?? null, 2)
   const dDirection = state === 'solid' ? (dn?.flow_direction ?? null) as 'concurrent' | 'opposed' | 'stagnation' | null : null
   const dO2 = dn?.o2_percent ?? null
   const dBurner: BurnerKind = BURNER[drawn?.psi_id ?? ''] ?? 'jet'
@@ -951,7 +956,7 @@ function TelemetryHud({ data, t, cls, label, is1g }: { data: Dataset; t: TestRec
   const rows: [string, ReactNode, string][] = [
     ['O₂', n.o2_percent != null ? `${n.o2_percent}%` : nr, tier('o2_percent')],
     ['Pressure', kpa != null ? `${kpa} kPa · ${(kpa / 6.894757).toFixed(2)} psia` : nr, tier('pressure_kpa')],
-    ['Flow', n.flow_cm_s != null ? `${n.flow_cm_s} cm/s` : nr, tier('flow_cm_s')],
+    ['Flow', n.flow_sequence_cm_s.length > 1 ? `${n.flow_sequence_cm_s.join(' → ')} cm/s` : n.flow_cm_s != null ? `${n.flow_cm_s} cm/s` : nr, tier('flow_cm_s')],
     ['Direction', n.flow_direction ? n.flow_direction : nr, tier('flow_direction')],
     ['Geometry', n.geometry || dims ? `${n.geometry ?? ''}${n.geometry && dims ? ', ' : ''}${dims}` : nr, tier('geometry')],
     [is1g ? 'Outcome (1 g)' : 'Outcome', cls && label ? label : nr, cls ? tier(is1g ? 'outcome_1g_class' : 'outcome_class') : '—'],

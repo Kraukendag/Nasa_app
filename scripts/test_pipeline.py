@@ -184,7 +184,7 @@ def _():
     import hashlib
     ix = load("search_index.json")
     h = hashlib.sha256()
-    for f in ["tests.json", "findings.json", "materials.json", "literature.json"]:
+    for f in ["tests.json", "findings.json", "materials.json", "literature.json", "findings_strict.json", "materials_strict.json"]:
         with open(os.path.join(DATA, f), "rb") as fh:
             h.update(fh.read())
     assert ix["data_hash"] == h.hexdigest(), "stale index: run  node scripts/build_search_index.mjs"
@@ -231,6 +231,72 @@ def _():
 def _():
     m = flex["metrics"]
     assert m["accuracy"] > m["baseline_accuracy"] and m["auc"] > 0.5, m
+
+
+@check("every test row carries its PSI id and its investigation's DOI; source tiers are labelled")
+def _():
+    doi = {i["psi_id"]: i["doi"] for i in invs}
+    tiers = {"PSI_RAW", "PSI_DERIVED_CALIBRATION", "NTRS_APPENDIX_TRANSCRIBED"}
+    for t in tests:
+        assert re.fullmatch(r"PSI-\d+", t["psi_id"]), t["id"]
+        assert doi.get(t["psi_id"]), f"{t['id']}: no DOI for {t['psi_id']}"
+        assert "psi_raw_fields" in t and "raw" not in t, t["id"]
+        assert t["data_source_tier"] == "PSI_RAW", t["id"]
+        assert set(t["field_tiers"].values()) <= tiers, t["id"]
+    # Appendix A fields are labelled as NTRS, never as PSI.
+    for t in tests:
+        src = t["normalized"].get("outcome_source") or ""
+        if src.startswith("NASA/TM-20210011385"):
+            for f in ("outcome", "outcome_class", "outcome_text", "outcome_source"):
+                if t["normalized"].get(f) is not None:
+                    assert t["field_tiers"].get(f) == "NTRS_APPENDIX_TRANSCRIBED", (t["id"], f)
+
+
+@check("strict PSI mode: no NTRS literature and no Appendix A endings anywhere in the strict files")
+def _():
+    fs, ms, ivs = load("findings_strict.json"), load("materials_strict.json"), load("investigations_strict.json")
+    assert fs["mode"] == "strict_psi" and fs["flamelets"] == []
+    lit_keys = set(lit["sources"])
+    for k in fs["key_insights"]:
+        assert not k["lit"], k["id"]
+    for q in fs["research_questions"]:
+        assert not [r for r in q["refs"] if r in lit_keys], q["id"]
+    assert len(fs["research_questions"]) + fs["research_questions_hidden"] == len(findings["research_questions"])
+    assert all(q in {x["id"] for x in fs["research_questions"]} for q in fs["team_picks"])
+    for m in ms:
+        assert not (m.get("literature") or {}).get("points") and not (m.get("literature") or {}).get("saffire"), m["id"]
+    text = json.dumps(fs) + json.dumps(ms)
+    assert "NASA/TM-20210011385, App" not in text and "Appendix A, p." not in text, "Appendix ending leaked into strict files"
+    full25 = next(i for i in invs if i["psi_id"] == "PSI-25")["outcome_fraction"]
+    strict25 = next(i for i in ivs if i["psi_id"] == "PSI-25")["outcome_fraction"]
+    assert strict25 < full25 and strict25 <= 0.01, (strict25, full25)   # only O22's own table cell
+
+
+@check("every PSI column is listed with recorded and blank counts that add up")
+def _():
+    for i in invs:
+        rows = [t for t in tests if t["psi_id"] == i["psi_id"] and not t["is_note"]]
+        cols = {k.strip() for t in rows for k in t["psi_raw_fields"]}
+        assert {c["column"] for c in i["column_coverage"]} == cols, i["psi_id"]
+        for c in i["column_coverage"]:
+            assert c["recorded"] + c["blank"] == len(rows), (i["psi_id"], c)
+    flex2 = next(i for i in invs if i["psi_id"] == "PSI-68")
+    assert len(flex2["column_coverage"]) == 7 and all(c["blank"] == 0 for c in flex2["column_coverage"])
+
+
+@check("search index: every item says where it comes from; strict items never come only from NTRS")
+def _():
+    ix = load("search_index.json")
+    for d in ix["docs"]:
+        assert d["src"]["kind"] in ("psi", "ntrs", "mixed"), d["id"]
+        if d["src"]["kind"] == "ntrs":
+            assert d["strict"] is False, d["id"]
+        if d["type"] == "record":
+            assert d["src"]["psi"] and d["src"]["doi"], d["id"]
+        if d.get("text_strict") is not None and d["type"] == "record":
+            t = next(x for x in tests if x["id"] == d["id"])
+            ot = t["normalized"].get("outcome_text")
+            assert not ot or ot[:30] not in d["text_strict"], d["id"]
 
 
 # ---- Report -----------------------------------------------------------------

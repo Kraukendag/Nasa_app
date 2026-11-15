@@ -55,6 +55,56 @@ const PAGES = ['home', 'habitat', 'lab', 'data', 'findings', 'ranking', 'questio
     else console.log('  AI search offline: ok')
     await page.close()
   }
+  // No WebGL at all (getContext returns null): Home and Lab still render, as 2D schematics.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } })
+    await ctx.addInitScript(() => {
+      const orig = HTMLCanvasElement.prototype.getContext
+      HTMLCanvasElement.prototype.getContext = function (type, ...rest) {
+        return /webgl/i.test(String(type)) ? null : orig.call(this, type, ...rest)
+      }
+    })
+    const page = await ctx.newPage()
+    const errs = []
+    page.on('pageerror', (e) => errs.push(e.message.slice(0, 160)))
+    for (const p of ['home', 'lab']) {
+      await page.goto(`${BASE}/#/${p}`); await page.waitForTimeout(2000)
+      const h1 = await page.locator('h1').first().innerText().catch(() => '')
+      const svg = await page.locator('svg[aria-label^="2D schematic"]').count()
+      if (!h1 || !svg) fails.push(`no WebGL: ${p} did not render its 2D schematic (heading "${h1}", schematics ${svg})`)
+      else console.log(`  no WebGL: ${p} renders 2D schematic: ok`)
+    }
+    if (errs.length) fails.push(`no WebGL: page errors ${errs.join(' | ')}`)
+    await ctx.close()
+  }
+  // Strict PSI mode is the default; the Lab shows the drawn test's telemetry and the disclosure.
+  {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+    await page.goto(`${BASE}/#/lab`); await page.waitForTimeout(2500)
+    const pill = await page.getByRole('button', { name: 'Data Mode: 100% NASA PSI Strict' }).filter({ visible: true }).count()
+    const hud = await page.locator('text=Empirical PSI Telemetry Overlay').count()
+    const badge = await page.locator('text=Visual Regime Reconstruction: Ray-marched GLSL representation driven by discrete NASA PSI test parameters (non-interpolated, non-CFD).').count()
+    const doi = await page.locator('text=/DOI 10\\.60555\\//').count()
+    if (!pill || !hud || !badge || !doi) fails.push(`strict mode / Lab telemetry missing (pill ${pill}, overlay ${hud}, badge ${badge}, DOI ${doi})`)
+    else console.log('  strict mode default, Lab telemetry overlay and disclosure: ok')
+    await page.goto(`${BASE}/#/lunar-habitat`); await page.waitForTimeout(800)
+    if (!/#\/habitat/.test(page.url())) fails.push(`alias #/lunar-habitat did not redirect (at ${page.url()})`)
+    else console.log('  route alias #/lunar-habitat -> #/habitat: ok')
+    await page.close()
+  }
+  // Search still answers (by keywords) when the AI model cannot load.
+  {
+    const page = await browser.newPage()
+    await page.route(/\/(models|ort)\//, (r) => r.abort())
+    await page.goto(`${BASE}/#/search`); await page.waitForTimeout(800)
+    await page.fill('input[aria-label="Search question"]', 'silicone burned on Earth')
+    await page.click('form button.btn-primary')
+    const ok = await page.waitForSelector('text=Keyword fallback', { timeout: 20000 }).then(() => true, () => false)
+    const n = await page.locator('section:has(h2:has-text("Closest matches")) ol li').count()
+    if (!ok || !n) fails.push(`search fallback failed (notice ${ok}, results ${n})`)
+    else console.log(`  search keyword fallback with the model blocked: ok (${n} results)`)
+    await page.close()
+  }
   await browser.close()
   if (fails.length) { console.log('\nFAILED:\n  ' + fails.join('\n  ')); process.exit(1) }
   console.log('\nAll website checks passed.')

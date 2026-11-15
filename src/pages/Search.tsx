@@ -9,8 +9,9 @@
 
 import { useEffect, useState } from 'react'
 import type { Dataset } from '../data'
-import { onModelProgress, search, warmUp } from '../search'
-import type { Hit } from '../search'
+import { onModelProgress, searchWithFallback, warmUp } from '../search'
+import type { Hit, SearchDoc } from '../search'
+import { useDataMode } from '../context/DataModeContext'
 import { Page, Section } from '../ui'
 
 const TYPES: [string, string][] = [
@@ -32,12 +33,19 @@ export default function Search({ data }: { data: Dataset }) {
   const [state, setState] = useState<'idle' | 'loading' | 'error'>('idle')
   const [err, setErr] = useState('')
   const [progress, setProgress] = useState<number | null>(null)
+  const [mode, setMode] = useState<{ mode: 'semantic' | 'lexical'; reason?: string } | null>(null)
+  const { strictPsiOnly } = useDataMode()
   useEffect(() => { onModelProgress((f) => setProgress(f)); return () => onModelProgress(null) }, [])
 
   const run = async (text: string) => {
     if (!text.trim()) return
     setQ(text); setState('loading')
-    try { setHits(await search(text, 25, types)); setState('idle') }
+    // Strict PSI mode leaves out items that come only from NASA reports outside PSI.
+    const keep = (d: SearchDoc) => (!types.size || types.has(d.type)) && (!strictPsiOnly || d.strict)
+    try {
+      const r = await searchWithFallback(text, 25, keep)
+      setHits(r.hits); setMode({ mode: r.mode, reason: r.reason }); setState('idle')
+    }
     catch (e) { setErr((e as Error).message); setState('error') }
   }
   const toggle = (t: string) => setTypes((s) => { const n = new Set(s); n.has(t) ? n.delete(t) : n.add(t); return n })
@@ -56,7 +64,7 @@ export default function Search({ data }: { data: Dataset }) {
             <button className="btn btn-primary" disabled={state === 'loading'}>{state === 'loading' ? 'Searching…' : 'Search'}</button>
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {TYPES.map(([t, l]) => <button type="button" key={t} onClick={() => toggle(t)} className={`chip ${types.has(t) ? 'chip-on' : ''}`}>{l}</button>)}
+            {TYPES.filter(([t]) => !strictPsiOnly || !['literature', 'glossary'].includes(t)).map(([t, l]) => <button type="button" key={t} onClick={() => toggle(t)} className={`chip ${types.has(t) ? 'chip-on' : ''}`}>{l}</button>)}
           </div>
           <p className="caption">Try: {EXAMPLES.map((x, i) => (
             <span key={x}>{i > 0 && ' · '}<button type="button" className="text-accent hover:underline" onClick={() => void run(x)}>{x}</button></span>
@@ -75,15 +83,21 @@ export default function Search({ data }: { data: Dataset }) {
 
         {hits && (
           <Section title={`Closest matches for “${q}”`}>
+            {mode?.mode === 'lexical' && (
+              <p className="wash p-3 small text-ink2 mb-3" aria-live="polite"><b className="text-ink">Keyword fallback:</b> {mode.reason}, so these
+                results match your words, not their meaning. Search again once the model has loaded for AI results.</p>
+            )}
+            {strictPsiOnly && <p className="caption mb-3">Strict PSI mode: items that come only from NASA reports outside PSI are left out, and BASS-II rows are shown without their Appendix A notes.</p>}
             <ol className="divide-y divide-rule border-y border-rule">
               {hits.map((h) => (
                 <li key={`${h.doc.type}-${h.doc.id}`} className="py-3 grid sm:grid-cols-[140px_1fr_70px] gap-x-4 gap-y-1">
                   <span className="caption">{label[h.doc.type] ?? h.doc.type}</span>
                   <div>
                     <a href={h.doc.link} className="font-medium">{h.doc.title}</a>
-                    <p className="small text-ink2">{h.doc.text}</p>
+                    <p className="small text-ink2">{strictPsiOnly && h.doc.text_strict != null ? h.doc.text_strict : h.doc.text}</p>
+                    <SourceBadge doc={h.doc} strict={strictPsiOnly} />
                   </div>
-                  <span className="caption num sm:text-right" title="Cosine similarity between your question and this item (1 = same meaning)">{h.score.toFixed(2)}</span>
+                  <span className="caption num sm:text-right" title={mode?.mode === 'lexical' ? 'Share of your (weighted) words this item contains' : 'Cosine similarity between your question and this item (1 = same meaning)'}>{h.score.toFixed(2)}</span>
                 </li>
               ))}
             </ol>
@@ -103,5 +117,22 @@ export default function Search({ data }: { data: Dataset }) {
         </Section>
       </div>
     </Page>
+  )
+}
+
+/** Where a result comes from: a PSI table with its DOI, or a NASA report outside PSI. */
+function SourceBadge({ doc, strict }: { doc: SearchDoc; strict: boolean }) {
+  const s = doc.src
+  const ntrs = Array.isArray(s.ntrs) ? s.ntrs : s.ntrs ? [s.ntrs] : []
+  const psi = s.psi ? <>NASA PSI · {s.psi}{s.doi ? <> · DOI {s.doi}</> : null}</> : <>NASA PSI tables</>
+  return (
+    <p className="mt-1 flex flex-wrap gap-1.5 text-[12px]">
+      {s.kind !== 'ntrs' && <span className="inline-flex items-center gap-1 rounded border border-[#1f7a4d]/40 px-1.5 py-0.5 text-[#1f7a4d]">{psi}</span>}
+      {(s.kind !== 'psi' || (s.appendix && !strict)) && (
+        <span className="inline-flex items-center gap-1 rounded border border-accent/40 px-1.5 py-0.5 text-accent">
+          External NTRS{s.appendix && s.kind === 'psi' ? ' · BASS-II report App. A (ending notes)' : ntrs.length ? ` · ${ntrs.join(', ')}` : ''}
+        </span>
+      )}
+    </p>
   )
 }
