@@ -133,3 +133,24 @@ visit the site opens offline (service worker in public/sw.js).
 
 Not affiliated with or endorsed by NASA. No NASA branding is used. A research summary,
 not a material certification or a safety approval.
+
+
+## Use of Super Intelligence (SI)
+
+Declared as the NASA Space Apps rules require. The same text is on the site's About page and in
+the `ai-disclosure` meta tag of `index.html`.
+
+- **Code (SI-assisted):** the data pipeline (`scripts/`), the website (`src/`) and the tests were
+  written with Claude Code (Anthropic) under the team's direction; the team reviewed and tested them.
+- **Data (SI-assisted transcription):** `data_raw/BASS-II_AppendixA_transcribed.csv` holds the test
+  observations of NASA/TM-20210011385, Appendix A, transcribed word for word with AI assistance,
+  each with its report page; checked against the PSI table's own airflow cells (18 of 19 agree)
+  and by a manual spot check of 10 rows against the PDF. Everything derived from it is labelled
+  `NTRS_APPENDIX_TRANSCRIBED` and is hidden in the default strict PSI mode.
+- **Source finding:** AI helped search and read NASA Technical Reports Server documents; every
+  value used was checked in the document itself (document number and page are cited).
+- **In the product:** the AI search runs the open model all-MiniLM-L6-v2 (Apache-2.0) in the
+  browser. It only retrieves existing NASA-sourced text; it never generates answers or values.
+- **Not SI-generated:** the 14 NASA PSI tables in `data_raw/` (byte-identical to NASA's files,
+  see `SHA256SUMS.txt`) and the NASA photos in `public/media/`.
+- No NASA logos, flags or mission identifiers are used or modified in any generated content.
