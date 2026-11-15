@@ -15,6 +15,7 @@
 import type { Dataset } from '../data'
 import { OUTCOME_MEANINGS } from '../outcomes'
 import { Fig, Page, Section, Stat } from '../ui'
+import HowItWorks from '../components/HowItWorks'
 
 const EXAMPLES = ['B1', 'O4', 'P19']
 
@@ -54,6 +55,10 @@ export default function Pipeline({ data }: { data: Dataset }) {
         <Stat value={withOutcome} label="tests with a recorded ending" />
         <Stat value={flags} label="data-quality flags, nothing deleted" />
       </div>
+
+      <Section title="How it works, at a glance">
+        <HowItWorks data={data} />
+      </Section>
 
       <Section title="Eight steps">
         <ol className="relative border-l-2 border-rule ml-3 space-y-7">
